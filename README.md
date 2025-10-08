@@ -1,89 +1,81 @@
 # SIGLAD — Sistema Integrado de Gestión Logística Aduanera y Declaraciones
 
 **SIGLAD** es una plataforma web integral para la **gestión, validación y control de declaraciones aduaneras electrónicas (DUCA)** bajo el esquema regional centroamericano.  
-El sistema implementa autenticación por roles, registro detallado de bitácoras automáticas y catálogos dinámicos de **aduanas, países e importadores**, todo conectado a **PostgreSQL**.
-
----
+El sistema implementa **autenticación por roles**, **bitácoras automáticas por IP y usuario**, y catálogos dinámicos de **aduanas, países e importadores**, todo conectado a **PostgreSQL** con triggers de auditoría.
 
 ## Estructura del Proyecto
 
 ```
-siglad_proyecto/
-├── backend/              # API Node.js + Express + PostgreSQL
-│   ├── routes/           # auth, users, duca, catalogos
-│   ├── middleware/       # requireAuth, requireRole, requireAnyRole
-│   ├── utils/            # bitacora.js
-│   ├── scripts/          # seed-admin.js
-│   ├── db.js             # Configuración del Pool PostgreSQL
-│   ├── server.js         # Servidor principal Express
-│   ├── package.json
-│   └── .env.example
-│
-├── frontend/             # Interfaz React + Vite
-│   ├── src/
-│   │   ├── App.jsx
-│   │   ├── Login.jsx
-│   │   ├── Panel.jsx
-│   │   ├── UsersAdmin.jsx
-│   │   ├── DucaRecepcion.jsx
-│   │   ├── ConsultaEstados.jsx
-│   │   └── ValidacionAgente.jsx
-│   ├── package.json
-│   └── vite.config.js
-│
-└── database/
-    └── script.sql        # Esquema completo PostgreSQL (bitácoras, triggers y catálogos)
-```
+
+siglad_proyecto/  
+├── backend/ # API Node.js + Express + PostgreSQL  
+│ ├── routes/ # auth, users, duca, catalogos  
+│ ├── middleware/ # requireAuth, requireRole, requireAnyRole  
+│ ├── utils/ # bitacora.js (registro de acciones e IP)  
+│ ├── scripts/ # seed-admin.js  
+│ ├── db.js # Configuración del Pool PostgreSQL  
+│ ├── server.js # Servidor principal Express  
+│ ├── package.json  
+│ └── .env.example  
+│  
+├── frontend/ # Interfaz React + Vite  
+│ ├── src/  
+│ │ ├── App.jsx  
+│ │ ├── Login.jsx  
+│ │ ├── Panel.jsx  
+│ │ ├── UsersAdmin.jsx  
+│ │ ├── DucaRecepcion.jsx  
+│ │ ├── ConsultaEstados.jsx  
+│ │ └── ValidacionAgente.jsx  
+│ ├── package.json  
+│ └── vite.config.js  
+│  
+└── database/  
+└── script.sql # Esquema completo PostgreSQL (bitácoras, triggers y catálogos)
+
+````
 
 ---
 
-## Funcionalidades Principales
+## 🧠 Funcionalidades Principales
 
-| Rol                 | Funcionalidades                                        | Descripción                                                                                                                                                     |
-| ------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Administrador**   | Gestión de usuarios (crear, editar, activar/inactivar) | Puede crear usuarios con distintos roles, editar información directamente desde la tabla y revisar todas las declaraciones.                                     |
-| **Transportista**   | Registro y envío de DUCA                               | Crea y envía declaraciones con importador, transporte, mercancías y moneda. Al enviarla se genera automáticamente en base de datos y puede consultar su estado. |
-| **Agente Aduanero** | Validación de declaraciones                            | Revisa las declaraciones pendientes, visualiza campos incompletos, y puede **Aprobar** o **Rechazar** con motivo obligatorio.                                   |
-| **Importador**      | Catálogo de importadores                               | Puede ser seleccionado desde el formulario de DUCA; no tiene panel propio (rol de referencia).                                                                  |
+| Rol                 | Funcionalidades                                                           | Descripción                                                                                                             |
+| ------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| **Administrador**   | Gestión completa de usuarios (crear, editar, activar/inactivar, eliminar) | Puede crear y editar usuarios directamente desde la tabla; controla roles y estados.                                    |
+| **Transportista**   | Registro y envío de DUCA                                                  | Crea y envía declaraciones con datos de importador, transporte, mercancías y moneda.                                    |
+| **Agente Aduanero** | Validación de declaraciones                                               | Visualiza pendientes, detecta campos faltantes automáticamente y puede **aprobar o rechazar** (con motivo obligatorio). |
+| **Importador**      | Catálogo referencial                                                      | Figura como entidad seleccionable en el formulario de DUCA.                                                             |
 
 ---
 
 ## Arquitectura General
 
-- **Backend:** Node.js + Express
-    
-- **Base de datos:** PostgreSQL (JSONB + triggers automáticos)
-    
-- **Frontend:** React + Vite + Axios
-    
-- **Autenticación:** JWT + bcryptjs
-    
-- **Bitácoras:** automáticas por función `logBitacora()` + trigger SQL
-    
-- **Despliegue:** Render (backend y PostgreSQL)
-    
-- **Arquitectura:** MVC + Clean Architecture asíncrona
-    
+- **Backend:** Node.js + Express  
+- **Base de datos:** PostgreSQL (con JSONB y triggers de bitácora)  
+- **Frontend:** React + Vite + Axios  
+- **Autenticación:** JWT + bcryptjs  
+- **Bitácoras:** función `logBitacora()` + trigger `trg_bitacora_duca`  
+- **Despliegue:** Render (backend + PostgreSQL)  
+- **Arquitectura:** MVC + Clean Architecture asíncrona  
 
 ---
 
 ## Instalación Local
 
-### Clonar el repositorio
-
+### 1. Clonar el repositorio
 ```bash
 git clone https://github.com/Calatias7/ProyectoWeb.git
 cd ProyectoWeb
-```
+````
 
-### Configurar el backend
+### 2. Configurar el backend
 
 ```bash
 cd backend
 cp .env.example .env
 ```
 
-Editar `.env` con tus datos de conexión:
+Editar `.env` con tus datos:
 
 ```
 DATABASE_URL=postgres://usuario:clave@host:5432/base
@@ -109,7 +101,7 @@ Ejecutar el servidor:
 npm run dev
 ```
 
-### Configurar el frontend
+### 3. Configurar el frontend
 
 ```bash
 cd ../frontend
@@ -118,7 +110,7 @@ npm run dev
 ```
 
 Abrir en el navegador:  
-[http://localhost:5173](http://localhost:5173/)
+ [http://localhost:5173](http://localhost:5173/)
 
 ---
 
@@ -126,61 +118,63 @@ Abrir en el navegador:
 
 |Rol|Usuario|Contraseña|Descripción|
 |---|---|---|---|
-|**Administrador**|[admin@siglad.com](mailto:admin@siglad.com)|Admin123|Acceso completo al sistema|
-|**Transportista**|Crear desde Admin|—|Crea y envía DUCA|
-|**Agente Aduanero**|Crear desde Admin|—|Valida o rechaza declaraciones|
-|**Importador**|Crear desde Admin|—|Seleccionable desde DUCA|
+|**Administrador**|[admin@siglad.com](mailto:admin@siglad.com)|Admin123|Control total del sistema|
+|**Transportista**|(crear desde Admin)|—|Envía DUCA|
+|**Agente Aduanero**|(crear desde Admin)|—|Valida y rechaza DUCA|
+|**Importador**|(crear desde Admin)|—|Referencia seleccionable|
 
 ---
 
 ## Estructura de Base de Datos
 
-Incluida en: `database/script.sql`
+Archivo: `database/script.sql`
 
 |Tabla|Descripción|
 |---|---|
-|`users`|Usuarios del sistema con roles|
-|`declaraciones`|Declaraciones DUCA (JSONB, timestamps, estados)|
-|`bitacora_usuarios`|Acciones de login, CRUD, validaciones, aprobaciones|
-|`bitacora_duca`|Historial de acciones sobre cada DUCA (trigger automático)|
-|`aduanas`|Catálogo de aduanas de Centroamérica|
+|`users`|Usuarios del sistema (roles, activos/inactivos)|
+|`declaraciones`|Declaraciones DUCA (JSONB + timestamps)|
+|`bitacora_usuarios`|Acciones de usuarios (login, CRUD, validaciones, IP, resultado)|
+|`bitacora_duca`|Historial de eventos sobre declaraciones (trigger automático)|
+|`aduanas`|Catálogo de aduanas centroamericanas|
 |`paises`|Catálogo de países (GT, HN, SV, CR, NI, PA)|
 
-**Características clave:**
+**Características:**
 
-- Índices por `estado`, `user_id` y `numero_documento`.
+- Índices en `estado`, `user_id`, `numero_documento`.
     
-- Trigger `trg_bitacora_duca` → inserta en bitácora cada cambio de estado.
+- Trigger `trg_bitacora_duca` registra cambios en cada declaración.
     
-- Datos iniciales de aduanas y países incluidos.
+- Bitácora automática por IP y usuario en acciones críticas.
+    
+- Datos base de aduanas y países incluidos.
     
 
 ---
 
-## Validaciones y Lógica DUCA
+## Lógica DUCA y Validaciones
 
 ### Registro de DUCA (Transportista)
 
-- Importadores desde `/api/users/importadores`
+- Selección de importador (`/api/users/importadores`)
     
-- Aduanas desde `/api/catalogos/aduanas`
+- Catálogo de aduanas (`/api/catalogos/aduanas`)
     
-- Países de catálogo base (solo Centroamérica)
+- País destino y moneda (GTQ / USD)
     
-- Moneda con conversión automática a GTQ, USD, EUR y HNL
+- Cálculo automático: `cantidad × valor unitario`
     
-- Cálculo automático de valores: `cantidad × valor unitario`
+- Guarda todo el documento como `JSONB` en `declaraciones`
     
 
 ### Consulta de Estados
 
-- Filtrado por estado: **Todos / Pendiente / Validada / Rechazada**
+- Filtrado por estado (**Todos / Pendiente / Validada / Rechazada**)
     
 - Muestra:
     
     - Número de documento
         
-    - Estado
+    - Estado actual
         
     - Fecha de creación
         
@@ -188,24 +182,30 @@ Incluida en: `database/script.sql`
         
 - En el detalle:
     
-    - Toda la información enviada (importador, transporte, mercancías, valores)
+    - Importador, transporte (con `ruta.aduanaSalida`, `aduanaEntrada`, `paisDestino`)
+        
+    - Mercancías y valores
         
     - Motivo de rechazo (si aplica)
         
-    - Validación automática de campos faltantes
-        
 
-### Validación (Agente Aduanero)
+### Validación de Declaraciones (Agente Aduanero)
 
-- Lista de pendientes: `/api/duca/pendientes`
+- Lista de pendientes desde `/api/duca/pendientes`
     
-- Vistas detalladas con fechas (`creada`, `revisada`)
+- Visualización detallada
     
-- Botones de acción:
+- Validación automática:
     
-    - **Aprobar** → cambia estado a `VALIDADA`
+    - Si falta un campo, aparece listado en un recuadro amarillo “Datos faltantes”.
         
-    - **Rechazar** → requiere texto de motivo obligatorio
+    - Detecta campos vacíos en importador, transporte, mercancías o valores.
+        
+- Acciones:
+    
+    - **Aprobar:** cambia estado a `VALIDADA`
+        
+    - **Rechazar:** requiere motivo obligatorio (`motivo_rechazo`)
         
 
 ---
@@ -219,101 +219,83 @@ Incluida en: `database/script.sql`
 |**POST**|`/api/users`|Administrador|Crear usuario|
 |**PUT**|`/api/users/:id`|Administrador|Editar usuario (en línea)|
 |**PUT**|`/api/users/:id/activo`|Administrador|Activar / Inactivar usuario|
+|**DELETE**|`/api/users/:id`|Administrador|Eliminar usuario|
 |**GET**|`/api/users/importadores`|Admin / Agente / Transportista|Listar importadores activos|
 |**GET**|`/api/catalogos/aduanas`|Todos con token|Catálogo de aduanas|
 |**POST**|`/api/duca/enviar`|Transportista|Registrar nueva DUCA|
-|**GET**|`/api/duca/consulta`|Todos|Listado general|
-|**GET**|`/api/duca/detalle/:numero`|Todos|Ver detalle completo|
+|**GET**|`/api/duca/consulta`|Todos|Lista general|
+|**GET**|`/api/duca/detalle/:numero`|Todos|Ver detalle|
 |**POST**|`/api/duca/aprobar/:numero`|Agente Aduanero|Aprobar DUCA|
-|**POST**|`/api/duca/rechazar/:numero`|Agente Aduanero|Rechazar con motivo obligatorio|
+|**POST**|`/api/duca/rechazar/:numero`|Agente Aduanero|Rechazar DUCA con motivo|
 
 ---
 
 ## Despliegue en Render
 
-**Backend:**
+**Backend**
 
-- Crear servicio web apuntando a `/backend`
-    
-- Runtime: Node.js
-    
-- Comandos:
-    
-    ```bash
-    npm install
-    npm start
-    ```
-    
-- Variables de entorno:
-    
-    ```
-    DATABASE_URL=postgres://usuario:clave@host:5432/basedatos
-    JWT_SECRET=supersecreto
-    DB_SSL=true
-    PORT=3000
-    ```
-    
+```bash
+npm install
+npm start
+```
 
-**Base de datos:**
+Variables:
 
-- Crear instancia PostgreSQL y ejecutar:
-    
-    ```bash
-    psql "postgres://usuario:clave@host:5432/basedatos?sslmode=require" -f database/script.sql
-    ```
-    
-- Crear usuario admin:
-    
-    ```bash
-    npm run seed:admin
-    ```
-    
+```
+DATABASE_URL=postgres://usuario:clave@host:5432/basedatos
+JWT_SECRET=supersecreto
+DB_SSL=true
+PORT=3000
+```
 
-**Frontend:**
+**Base de Datos**
 
-- Crear sitio estático (Render o Vercel)
-    
-- Comandos:
-    
-    ```bash
-    npm run build
-    ```
-    
-- Directorio de publicación: `/dist`
-    
+```bash
+psql "postgres://usuario:clave@host:5432/basedatos?sslmode=require" -f database/script.sql
+npm run seed:admin
+```
+
+**Frontend**
+
+```bash
+npm run build
+```
+
+Publicar `/dist` como sitio estático (Render o Vercel).
 
 ---
 
 ## Estado Actual
 
-✅ Backend funcional con autenticación JWT y bitácoras por IP y usuario  
-✅ Panel React con edición en línea y roles dinámicos  
-✅ DUCA con importador, aduana, país y conversión de moneda  
-✅ Validación completa para agentes (aprobación y rechazo con motivo)  
-✅ Bitácoras automáticas (`logBitacora` + trigger SQL)  
-✅ Fechas formateadas y catálogos dinámicos
+✅ Backend con JWT, roles y bitácoras por ID y usuario  
+✅ Edición de usuarios directamente en tabla  
+✅ DUCA con transporte anidado (`ruta.aduanaSalida`, etc.)  
+✅ Validación visual de datos faltantes  
+✅ Rechazo con motivo obligatorio  
+✅ Trigger SQL y bitácora unificada  
+✅ Fechas formateadas (creación y revisión)  
+✅ Compatible con Render + PostgreSQL
 
-🚧 Próximas mejoras:
+🚧 **Próximas mejoras:**
 
-- Reportes PDF y XLSX con XtraReports
+- Reportes PDF / XLSX
     
-- Dashboard con gráficos y métricas
+- Dashboard administrativo con estadísticas
     
 - Auditoría avanzada y exportación de logs
     
 
 ---
 
-## Autor
+## 👨‍💻 Autor
 
 Desarrollado por **Víctor Méndez**  
-Proyecto académico y técnico de despliegue real con **Clean Architecture** + **MVC Asíncrono**.
-
-**Tecnologías:** Node.js, Express, PostgreSQL, React, Vite, Render
+Proyecto académico y técnico de despliegue real con **Node.js + PostgreSQL + React**  
+Basado en **Clean Architecture** y **MVC Asíncrono**.
 
 ---
 
-## Licencia
+## 📜 Licencia
 
 **MIT © 2025** — Puedes usar, modificar y mejorar este sistema libremente.  
-Si mejoras SIGLAD, ¡menciona el crédito original para mantener viva la cadena de aprendizaje! 
+Si mejoras SIGLAD, ¡menciona el crédito original para mantener viva la cadena de aprendizaje!

@@ -11,13 +11,8 @@ function useAuthHeader() {
 const UNIDADES = ['CAJA', 'PALETS', 'CONTENEDOR'];
 const PAISES_CA = ['GT', 'SV', 'HN', 'NI', 'CR', 'PA', 'BZ'];
 
-/* Tasas de ejemplo (base interna = GTQ).
-   Si luego quieres reales, las movemos al backend/DB. */
-const FX = {
-  GTQ: 1,
-  USD: 0.128, // 1 GTQ -> 0.128 USD (ajústalo si deseas)
-};
-
+/* Tasas demo (base interna = GTQ) */
+const FX = { GTQ: 1, USD: 0.128 };
 const f2 = (n) => (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
 
 function hoyISO() { return new Date().toISOString().slice(0, 10); }
@@ -42,7 +37,6 @@ export default function DucaRecepcion() {
   const [aduanas, setAduanas] = useState([]);
   const [aduanaSalida, setAduanaSalida] = useState('');
   const [aduanaEntrada, setAduanaEntrada] = useState('');
-
   const [paisDestino, setPaisDestino] = useState('GT');
 
   // Mercancías
@@ -70,7 +64,7 @@ export default function DucaRecepcion() {
   // UI
   const [msg, setMsg] = useState('');
 
-  // Totales desde items (SIEMPRE)
+  // Totales calculados desde items
   const totalCalc = useMemo(
     () => items.reduce((acc, it) => acc + (Number(it.cantidad) || 0) * (Number(it.valorUnitario) || 0), 0),
     [items]
@@ -81,7 +75,7 @@ export default function DucaRecepcion() {
     setValorAduanaTotal(t);
   }, [totalCalc]);
 
-  // Cargas
+  // Cargar importadores
   useEffect(() => {
     (async () => {
       try {
@@ -95,6 +89,7 @@ export default function DucaRecepcion() {
     })();
   }, []);
 
+  // Cargar aduanas
   useEffect(() => {
     (async () => {
       try {
@@ -111,13 +106,11 @@ export default function DucaRecepcion() {
     })();
   }, []);
 
-  // Conversión de moneda: convierte PU de cada item y luego totales se recalculan
+  // Conversión de moneda (convierte PU item a item)
   function onChangeMoneda(e) {
     const nueva = e.target.value;
     if (nueva === moneda) return;
-    const rateOld = FX[moneda] || 1;
-    const rateNew = FX[nueva] || 1;
-    const factor = rateNew / rateOld;
+    const factor = (FX[nueva] || 1) / (FX[moneda] || 1);
 
     setItems((prev) =>
       prev.map((it) => ({
@@ -126,7 +119,6 @@ export default function DucaRecepcion() {
       }))
     );
     setMoneda(nueva);
-    // totales se recalculan automáticamente desde items
   }
 
   async function enviar() {

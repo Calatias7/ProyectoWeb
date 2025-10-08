@@ -1,6 +1,20 @@
 // frontend/src/ConsultaEstados.jsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { API_BASE } from './api';
+
+/** Utilidad segura para leer paths anidados */
+function get(o, path) {
+  return path.split('.').reduce((acc, k) => (acc && acc[k] !== undefined ? acc[k] : undefined), o);
+}
+
+/** Lee el primer path que exista (para compatibilidad hacia atrás) */
+function getMulti(o, paths) {
+  for (const p of paths) {
+    const v = get(o, p);
+    if (v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === '')) return v;
+  }
+  return undefined;
+}
 
 export default function ConsultaEstados() {
   const [estados, setEstados] = useState([]);
@@ -39,6 +53,29 @@ export default function ConsultaEstados() {
     cargarEstados();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estadoFiltro]);
+
+  // Derivados para mostrar transporte con compatibilidad
+  const duca = detalle?.duca || {};
+  const medioTransporte = useMemo(
+    () => getMulti(duca, ['transporte.medioTransporte', 'transporte.medio']) || '-',
+    [duca]
+  );
+  const placaVehiculo = useMemo(
+    () => getMulti(duca, ['transporte.placaVehiculo', 'transporte.placa']) || '-',
+    [duca]
+  );
+  const aduanaSalida = useMemo(
+    () => getMulti(duca, ['transporte.ruta.aduanaSalida', 'transporte.aduanaSalida']) || '-',
+    [duca]
+  );
+  const aduanaEntrada = useMemo(
+    () => getMulti(duca, ['transporte.ruta.aduanaEntrada', 'transporte.aduanaEntrada']) || '-',
+    [duca]
+  );
+  const paisDestino = useMemo(
+    () => getMulti(duca, ['transporte.ruta.paisDestino', 'transporte.paisDestino']) || '-',
+    [duca]
+  );
 
   return (
     <div style={{ marginTop: 16 }}>
@@ -99,17 +136,17 @@ export default function ConsultaEstados() {
 
           <fieldset style={{ marginTop: 8 }}>
             <legend>Importador</legend>
-            <p><b>ID:</b> {detalle.duca?.importador?.idImportador || '-'}</p>
-            <p><b>Nombre:</b> {detalle.duca?.importador?.nombreImportador || '-'}</p>
+            <p><b>ID:</b> {duca?.importador?.idImportador || '-'}</p>
+            <p><b>Nombre:</b> {duca?.importador?.nombreImportador || '-'}</p>
           </fieldset>
 
           <fieldset style={{ marginTop: 8 }}>
             <legend>Transporte</legend>
-            <p><b>Medio:</b> {detalle.duca?.transporte?.medio || '-'}</p>
-            <p><b>Placa:</b> {detalle.duca?.transporte?.placa || '-'}</p>
-            <p><b>Aduana salida:</b> {detalle.duca?.transporte?.aduanaSalida || '-'}</p>
-            <p><b>Aduana entrada:</b> {detalle.duca?.transporte?.aduanaEntrada || '-'}</p>
-            <p><b>País destino:</b> {detalle.duca?.transporte?.paisDestino || '-'}</p>
+            <p><b>Medio:</b> {medioTransporte}</p>
+            <p><b>Placa:</b> {placaVehiculo}</p>
+            <p><b>Aduana salida:</b> {aduanaSalida}</p>
+            <p><b>Aduana entrada:</b> {aduanaEntrada}</p>
+            <p><b>País destino:</b> {paisDestino}</p>
           </fieldset>
 
           <fieldset style={{ marginTop: 8 }}>
@@ -122,29 +159,32 @@ export default function ConsultaEstados() {
                   <th>País</th>
                   <th>Descripción</th>
                   <th>Unidad</th>
-                  <th>PU ({detalle.duca?.valores?.moneda || 'GTQ'})</th>
+                  <th>PU ({duca?.valores?.moneda || 'GTQ'})</th>
                 </tr>
               </thead>
               <tbody>
-                {(detalle.duca?.mercancias?.items || []).map((m, i) => (
+                {(duca?.mercancias?.items || []).map((m, i) => (
                   <tr key={i}>
                     <td>{i + 1}</td>
-                    <td>{m.cantidad}</td>
-                    <td>{m.paisOrigen}</td>
-                    <td>{m.descripcion}</td>
-                    <td>{m.unidadMedida}</td>
-                    <td>{m.valorUnitario}</td>
+                    <td>{m?.cantidad ?? '-'}</td>
+                    <td>{m?.paisOrigen || '-'}</td>
+                    <td>{m?.descripcion || '-'}</td>
+                    <td>{m?.unidadMedida || '-'}</td>
+                    <td>{m?.valorUnitario ?? '-'}</td>
                   </tr>
                 ))}
+                {(!duca?.mercancias?.items || duca?.mercancias?.items.length === 0) && (
+                  <tr><td colSpan="6">Sin ítems</td></tr>
+                )}
               </tbody>
             </table>
           </fieldset>
 
           <fieldset style={{ marginTop: 8 }}>
             <legend>Valores</legend>
-            <p><b>Moneda:</b> {detalle.duca?.valores?.moneda || 'GTQ'}</p>
-            <p><b>Valor factura:</b> {detalle.duca?.valores?.valorFactura} ({detalle.duca?.valores?.moneda || 'GTQ'})</p>
-            <p><b>Valor aduana total:</b> {detalle.duca?.valores?.valorAduanaTotal} ({detalle.duca?.valores?.moneda || 'GTQ'})</p>
+            <p><b>Moneda:</b> {duca?.valores?.moneda || 'GTQ'}</p>
+            <p><b>Valor factura:</b> {duca?.valores?.valorFactura} ({duca?.valores?.moneda || 'GTQ'})</p>
+            <p><b>Valor aduana total:</b> {duca?.valores?.valorAduanaTotal} ({duca?.valores?.moneda || 'GTQ'})</p>
           </fieldset>
         </div>
       )}

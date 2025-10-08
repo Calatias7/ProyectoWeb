@@ -6,8 +6,53 @@ const pool = require('../db');
 const requireAuth = require('../middleware/requireAuth');
 const requireRole = require('../middleware/requireRole');
 const requireAnyRole = require('../middleware/requireAnyRole');
-const { logBitacora } = require('../utils/bitacora'); // <-- NUEVO
+const { logBitacora } = require('../utils/bitacora');
 
+// ----------------------------
+// Normalizador de DUCA (para detalle)
+// Unifica transporte al formato:
+//   duca.transporte = {
+//     medioTransporte, placaVehiculo,
+//     ruta: { aduanaSalida, aduanaEntrada, paisDestino }
+//   }
+// soportando DUCA antiguas (medio/placa/aduanaSalida... “planas”)
+// ----------------------------
+function normalizeDuca(raw) {
+  const duca = raw || {};
+
+  if (!duca.transporte) {
+    const medioOld = duca.medio || duca.medioTransporte || '';
+    const placaOld = duca.placa || duca.placaVehiculo || '';
+    const salOld   = duca.aduanaSalida  || duca.ruta?.aduanaSalida  || '';
+    const entOld   = duca.aduanaEntrada || duca.ruta?.aduanaEntrada || '';
+    const paisOld  = duca.paisDestino   || duca.ruta?.paisDestino   || '';
+
+    duca.transporte = {
+      medioTransporte: medioOld || '',
+      placaVehiculo:   placaOld || '',
+      ruta: {
+        aduanaSalida:  salOld  || '',
+        aduanaEntrada: entOld  || '',
+        paisDestino:   paisOld || ''
+      }
+    };
+  } else {
+    const t = duca.transporte || {};
+    const r = t.ruta || {};
+
+    duca.transporte = {
+      medioTransporte: t.medioTransporte || t.medio || '',
+      placaVehiculo:   t.placaVehiculo   || t.placa || '',
+      ruta: {
+        aduanaSalida:  r.aduanaSalida  || t.aduanaSalida  || '',
+        aduanaEntrada: r.aduanaEntrada || t.aduanaEntrada || '',
+        paisDestino:   r.paisDestino   || t.paisDestino   || ''
+      }
+    };
+  }
+
+  return duca;
+}
 
 // ======================================================
 // Enviar DUCA (TRANSPORTISTA)
@@ -20,17 +65,14 @@ router.post('/enviar', requireAuth, requireRole('TRANSPORTISTA'), async (req, re
     const numero = duca.numeroDocumento;
     if (!numero) return res.status(400).json({ error: 'Falta numeroDocumento.' });
 
-    // Guardamos el objeto JSON directamente (pg lo serializa) con cast a jsonb
     await pool.query(
       `INSERT INTO declaraciones (numero_documento, estado, duca_json, user_id)
        VALUES ($1, 'PENDIENTE', $2::jsonb, $3)`,
       [numero, duca, req.user.id]
     );
 
-    // Bitácora usuarios (quién ejecuta la acción)
     await logBitacora(req, { operacion: 'DUCA_ENVIAR', resultado: 'OK' });
 
-    // Bitácora específica de DUCA (histórico de documento)
     try {
       await pool.query(
         `INSERT INTO bitacora_duca (numero_documento, usuario, accion, detalle)
@@ -49,10 +91,6 @@ router.post('/enviar', requireAuth, requireRole('TRANSPORTISTA'), async (req, re
 
 // ======================================================
 // Consulta de declaraciones (lista)
-// - Transportista: solo sus DUCA (user_id)
-// - Admin/Agente: todas
-// - ?estado=Todos|PENDIENTE|VALIDADA|RECHAZADA
-// Devuelve fechas formateadas: creada, revisada
 // ======================================================
 router.get(
   '/consulta',
@@ -83,18 +121,15 @@ router.get(
         params.push(estado);
         sql += ` AND estado = $${params.length}`;
       }
-
       if (role === 'TRANSPORTISTA') {
         params.push(userId);
         sql += ` AND user_id = $${params.length}`;
       }
-
       sql += ` ORDER BY created_at DESC`;
 
       const { rows } = await pool.query(sql, params);
 
       await logBitacora(req, { operacion: 'DUCA_CONSULTA', resultado: 'OK' });
-
       res.json(rows);
     } catch (err) {
       await logBitacora(req, { operacion: 'DUCA_CONSULTA', resultado: 'ERROR' });
@@ -105,8 +140,7 @@ router.get(
 );
 
 // ======================================================
-// Detalle por número
-// Devuelve creada/revisada formateadas y motivo_rechazo
+// Detalle por número (normalizado)
 // ======================================================
 router.get(
   '/detalle/:numero',
@@ -132,16 +166,18 @@ router.get(
         [numero]
       );
 
-      if (rows.length === 0) return res.status(404).json({ error: 'No encontrada.' });
+      if (!rows.length) return res.status(404).json({ error: 'No encontrada.' });
 
       const det = rows[0];
+
       if (req.user.role === 'TRANSPORTISTA' && det.user_id !== req.user.id) {
         await logBitacora(req, { operacion: 'DUCA_DETALLE', resultado: 'ERROR' });
         return res.status(403).json({ error: 'Sin permisos para ver esta DUCA.' });
       }
 
-      await logBitacora(req, { operacion: 'DUCA_DETALLE', resultado: 'OK' });
+      det.duca = normalizeDuca(det.duca);
 
+      await logBitacora(req, { operacion: 'DUCA_DETALLE', resultado: 'OK' });
       res.json(det);
     } catch (err) {
       await logBitacora(req, { operacion: 'DUCA_DETALLE', resultado: 'ERROR' });
@@ -166,7 +202,6 @@ router.get('/pendientes', requireAuth, requireRole('AGENTE_ADUANERO'), async (re
     );
 
     await logBitacora(req, { operacion: 'DUCA_PENDIENTES', resultado: 'OK' });
-
     res.json(rows);
   } catch (err) {
     await logBitacora(req, { operacion: 'DUCA_PENDIENTES', resultado: 'ERROR' });

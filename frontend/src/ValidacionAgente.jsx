@@ -2,50 +2,67 @@
 import { useEffect, useMemo, useState } from 'react';
 import { API_BASE } from './api';
 
-/**
- * Utilidad segura para leer paths anidados: get(duca, 'importador.idImportador')
- */
+/** Utilidad segura para leer paths anidados */
 function get(o, path) {
   return path.split('.').reduce((acc, k) => (acc && acc[k] !== undefined ? acc[k] : undefined), o);
 }
 
-/**
- * Marca un campo como requerido. Si no existe o está vacío, lo agrega a "faltantes".
- */
-function req(duca, path, label, faltantes) {
-  const v = get(duca, path);
+/** Lee el primer path que exista (para compatibilidad hacia atrás) */
+function getMulti(o, paths) {
+  for (const p of paths) {
+    const v = get(o, p);
+    if (v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === '')) return v;
+  }
+  return undefined;
+}
+
+/** Marca requerido considerando múltiples rutas posibles (retrocompatibilidad) */
+function reqMulti(duca, paths, label, faltantes) {
+  const v = getMulti(duca, paths);
   const empty = v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
   if (empty) faltantes.push(label);
   return v;
 }
 
-/**
- * Valida y devuelve lista de faltantes human-readable.
- * Ajusta la lista si tu esquema exige otros campos.
- */
+/** Valida y devuelve lista de faltantes human-readable */
 function validarDuca(duca) {
   const faltantes = [];
   if (!duca || typeof duca !== 'object') {
     return ['Estructura de DUCA vacía o inválida'];
   }
 
-  // Declaración (opcional/obligatorio según tu flujo)
-  req(duca, 'numeroDocumento', 'N° Documento', faltantes);
-  req(duca, 'fechaEmision', 'Fecha de emisión', faltantes);
-  req(duca, 'paisEmisor', 'País emisor', faltantes);
-  req(duca, 'tipoOperacion', 'Tipo de operación', faltantes);
+  // Declaración
+  reqMulti(duca, ['numeroDocumento'], 'N° Documento', faltantes);
+  reqMulti(duca, ['fechaEmision'], 'Fecha de emisión', faltantes);
+  reqMulti(duca, ['paisEmisor'], 'País emisor', faltantes);
+  // reqMulti(duca, ['tipoOperacion'], 'Tipo de operación', faltantes); // si lo usas
 
   // Importador
-  req(duca, 'importador.idImportador', 'Importador - ID', faltantes);
-  req(duca, 'importador.nombreImportador', 'Importador - Nombre', faltantes);
+  reqMulti(duca, ['importador.idImportador'], 'Importador - ID', faltantes);
+  reqMulti(duca, ['importador.nombreImportador'], 'Importador - Nombre', faltantes);
 
-  // Transporte
-  req(duca, 'transporte.medio', 'Transporte - Medio', faltantes);
-  // Placa puede ser opcional si no es terrestre. Si quieres forzar, descomenta:
-  // req(duca, 'transporte.placa', 'Transporte - Placa', faltantes);
-  req(duca, 'transporte.aduanaSalida', 'Transporte - Aduana salida', faltantes);
-  req(duca, 'transporte.aduanaEntrada', 'Transporte - Aduana entrada', faltantes);
-  req(duca, 'transporte.paisDestino', 'Transporte - País destino', faltantes);
+  // Transporte (formato nuevo y soporte al viejo)
+  reqMulti(duca, ['transporte.medioTransporte', 'transporte.medio'], 'Transporte - Medio', faltantes);
+  // Placa opcional. Si la quieres obligatoria descomenta:
+  reqMulti(duca, ['transporte.placaVehiculo', 'transporte.placa'], 'Transporte - Placa', faltantes);
+  reqMulti(
+    duca,
+    ['transporte.ruta.aduanaSalida', 'transporte.aduanaSalida'],
+    'Transporte - Aduana salida',
+    faltantes
+  );
+  reqMulti(
+    duca,
+    ['transporte.ruta.aduanaEntrada', 'transporte.aduanaEntrada'],
+    'Transporte - Aduana entrada',
+    faltantes
+  );
+  reqMulti(
+    duca,
+    ['transporte.ruta.paisDestino', 'transporte.paisDestino'],
+    'Transporte - País destino',
+    faltantes
+  );
 
   // Mercancías
   const items = duca?.mercancias?.items || [];
@@ -58,21 +75,17 @@ function validarDuca(duca) {
         return;
       }
       if (!(it.cantidad > 0)) faltantes.push(`Mercancías[${idx + 1}] - Cantidad`);
-      if (!it.paisOrigen) faltantes.push(`Mercancías[${idx + 1}] - País de origen`);
-      if (!it.descripcion) faltantes.push(`Mercancías[${idx + 1}] - Descripción`);
+      if (!it.paisOrigen)   faltantes.push(`Mercancías[${idx + 1}] - País de origen`);
+      if (!it.descripcion)  faltantes.push(`Mercancías[${idx + 1}] - Descripción`);
       if (!it.unidadMedida) faltantes.push(`Mercancías[${idx + 1}] - Unidad de medida`);
       if (!(it.valorUnitario >= 0)) faltantes.push(`Mercancías[${idx + 1}] - Valor unitario`);
     });
   }
 
   // Valores
-  req(duca, 'valores.moneda', 'Valores - Moneda', faltantes);
-  if (!(duca?.valores?.valorFactura >= 0)) faltantes.push('Valores - Valor factura');
+  reqMulti(duca, ['valores.moneda'], 'Valores - Moneda', faltantes);
+  if (!(duca?.valores?.valorFactura >= 0))     faltantes.push('Valores - Valor factura');
   if (!(duca?.valores?.valorAduanaTotal >= 0)) faltantes.push('Valores - Valor aduana total');
-
-  // Final (si usas estos campos)
-  // req(duca, 'final.estadoDocumento', 'Final - Estado documento', faltantes);
-  // req(duca, 'final.firmaElectronica', 'Final - Firma electrónica', faltantes);
 
   return faltantes;
 }
@@ -160,6 +173,13 @@ export default function ValidacionAgente() {
 
   const duca = detalle?.duca || {};
 
+  // Campos de transporte (nuevo + compatibilidad)
+  const medioTransporte = getMulti(duca, ['transporte.medioTransporte', 'transporte.medio']) || '-';
+  const placaVehiculo   = getMulti(duca, ['transporte.placaVehiculo', 'transporte.placa']) || '-';
+  const aduanaSalida    = getMulti(duca, ['transporte.ruta.aduanaSalida', 'transporte.aduanaSalida']) || '-';
+  const aduanaEntrada   = getMulti(duca, ['transporte.ruta.aduanaEntrada', 'transporte.aduanaEntrada']) || '-';
+  const paisDestino     = getMulti(duca, ['transporte.ruta.paisDestino', 'transporte.paisDestino']) || '-';
+
   return (
     <div style={{ marginTop: 16 }}>
       <h2>Validación de Declaraciones</h2>
@@ -214,7 +234,6 @@ export default function ValidacionAgente() {
             <p><b>N° Documento:</b> {duca?.numeroDocumento || '-'}</p>
             <p><b>Fecha emisión:</b> {duca?.fechaEmision || '-'}</p>
             <p><b>País emisor:</b> {duca?.paisEmisor || '-'}</p>
-            <p><b>Tipo operación:</b> {duca?.tipoOperacion || '-'}</p>
           </fieldset>
 
           {/* Importador */}
@@ -224,14 +243,14 @@ export default function ValidacionAgente() {
             <p><b>Nombre:</b> {duca?.importador?.nombreImportador || '-'}</p>
           </fieldset>
 
-          {/* Transporte */}
+          {/* Transporte (normalizado) */}
           <fieldset style={{ marginTop: 8 }}>
             <legend>Transporte</legend>
-            <p><b>Medio:</b> {duca?.transporte?.medio || '-'}</p>
-            <p><b>Placa:</b> {duca?.transporte?.placa || '-'}</p>
-            <p><b>Aduana salida:</b> {duca?.transporte?.aduanaSalida || '-'}</p>
-            <p><b>Aduana entrada:</b> {duca?.transporte?.aduanaEntrada || '-'}</p>
-            <p><b>País destino:</b> {duca?.transporte?.paisDestino || '-'}</p>
+            <p><b>Medio:</b> {medioTransporte}</p>
+            <p><b>Placa:</b> {placaVehiculo}</p>
+            <p><b>Aduana salida:</b> {aduanaSalida}</p>
+            <p><b>Aduana entrada:</b> {aduanaEntrada}</p>
+            <p><b>País destino:</b> {paisDestino}</p>
           </fieldset>
 
           {/* Mercancías */}
