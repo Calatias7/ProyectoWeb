@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../db');
 const requireAuth = require('../middleware/requireAuth');
+const { logBitacora } = require('../utils/bitacora'); // <<-- nuevo
 
 const router = express.Router();
 
@@ -12,20 +13,40 @@ const router = express.Router();
    ====================== */
 router.post('/login', async (req, res) => {
   const { email, password } = req.body || {};
+
   try {
     const { rows } = await pool.query(
       'SELECT id, email, nombre, role, password_hash, activo FROM users WHERE email=$1',
       [email]
     );
     const u = rows[0];
-    if (!u || !u.activo) return res.status(401).json({ error: 'Credenciales inválidas' });
 
+    // Usuario no existe o inactivo
+    if (!u || !u.activo) {
+      await logBitacora(req, { operacion: 'LOGIN', resultado: 'ERROR', usuarioEmail: email || '' });
+      return res.status(401).json({ error: 'Credenciales inválidas' });
+    }
+
+    // Validar contraseña
     const ok = await bcrypt.compare(password || '', u.password_hash);
-    if (!ok) return res.status(401).json({ error: 'Credenciales inválidas' });
+    if (!ok) {
+      await logBitacora(req, { operacion: 'LOGIN', resultado: 'ERROR', usuarioEmail: u.email, actorId: u.id });
+      return res.status(401).json({ error: 'Credenciales inválidas' });
+    }
 
-    const token = jwt.sign({ id: u.id, email: u.email, role: u.role }, process.env.JWT_SECRET, { expiresIn: '12h' });
+    // Login OK -> registrar en bitácora
+    await logBitacora(req, { operacion: 'LOGIN', resultado: 'OK', usuarioEmail: u.email, actorId: u.id });
+
+    const token = jwt.sign(
+      { id: u.id, email: u.email, role: u.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '12h' }
+    );
+
     res.json({ token, role: u.role, email: u.email, nombre: u.nombre });
   } catch (err) {
+    // Excepción en login -> registrar
+    await logBitacora(req, { operacion: 'LOGIN', resultado: 'EXCEPTION', usuarioEmail: email || '' });
     console.error('Login error:', err);
     res.status(500).json({ error: 'Error en el servidor' });
   }

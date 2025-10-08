@@ -3,16 +3,18 @@ const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 
-const pool = require('../db'); // <<--- IMPORTACIÓN CORRECTA
+const pool = require('../db'); // Importación correcta
 const requireAuth = require('../middleware/requireAuth');
 const requireRole = require('../middleware/requireRole');
 const requireAnyRole = require('../middleware/requireAnyRole');
+const { logBitacora } = require('../utils/bitacora'); // bitácora usuarios
 
 /**
  * GET /api/users
  * Lista usuarios (solo ADMINISTRADOR). Soporta ?q= para buscar por nombre o email.
  */
-router.get('/',
+router.get(
+  '/',
   requireAuth,
   requireRole('ADMINISTRADOR'),
   async (req, res) => {
@@ -32,8 +34,11 @@ router.get('/',
       sql += ` ORDER BY id DESC`;
 
       const { rows } = await pool.query(sql, params);
+
+      await logBitacora(req, { operacion: 'USUARIO_LISTA', resultado: 'OK' });
       res.json(rows);
     } catch (e) {
+      await logBitacora(req, { operacion: 'USUARIO_LISTA', resultado: 'ERROR' });
       console.error('❌ /api/users GET:', e);
       res.status(500).json({ error: 'Error al listar usuarios' });
     }
@@ -45,7 +50,8 @@ router.get('/',
  * Crea usuario (solo ADMINISTRADOR). password es opcional (si viene, se hashea).
  * body: { nombre, email, role, activo, password }
  */
-router.post('/',
+router.post(
+  '/',
   requireAuth,
   requireRole('ADMINISTRADOR'),
   async (req, res) => {
@@ -64,8 +70,10 @@ router.post('/',
         [nombre, email.toLowerCase(), password_hash, role, !!activo]
       );
 
+      await logBitacora(req, { operacion: 'USUARIO_ALTA', resultado: 'OK' });
       res.json({ ok: true });
     } catch (e) {
+      await logBitacora(req, { operacion: 'USUARIO_ALTA', resultado: 'ERROR' });
       console.error('❌ /api/users POST:', e);
       if (e.code === '23505') return res.status(400).json({ error: 'El email ya existe.' });
       res.status(500).json({ error: 'Error al crear usuario' });
@@ -74,19 +82,74 @@ router.post('/',
 );
 
 /**
+ * PUT /api/users/:id   ← EDITAR (nombre, email, role)
+ */
+router.put(
+  '/:id',
+  requireAuth,
+  requireRole('ADMINISTRADOR'),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { nombre = '', email = '', role } = req.body;
+
+      if (!email || !role) return res.status(400).json({ error: 'Email y rol son obligatorios.' });
+
+      const { rows } = await pool.query(
+        `UPDATE users
+            SET nombre = $1,
+                email  = $2,
+                role   = $3
+          WHERE id = $4
+          RETURNING id, nombre, email, role, activo, to_char(created_at,'DD/MM/YYYY') AS creado`,
+        [nombre, email.toLowerCase(), role, id]
+      );
+
+      if (!rows.length) {
+        await logBitacora(req, { operacion: 'USUARIO_EDITAR', resultado: 'ERROR' });
+        return res.status(404).json({ error: 'Usuario no encontrado' });
+      }
+
+      await logBitacora(req, { operacion: 'USUARIO_EDITAR', resultado: 'OK' });
+      res.json(rows[0]);
+    } catch (e) {
+      await logBitacora(req, { operacion: 'USUARIO_EDITAR', resultado: 'ERROR' });
+      console.error('❌ /api/users PUT :id', e);
+      if (e.code === '23505') return res.status(400).json({ error: 'El email ya existe.' });
+      res.status(500).json({ error: 'Error al actualizar usuario' });
+    }
+  }
+);
+
+/**
  * PUT /api/users/:id/activo
  * Activa/Desactiva (solo ADMINISTRADOR)
  */
-router.put('/:id/activo',
+router.put(
+  '/:id/activo',
   requireAuth,
   requireRole('ADMINISTRADOR'),
   async (req, res) => {
     try {
       const { id } = req.params;
       const { activo } = req.body;
-      await pool.query(`UPDATE users SET activo = $1 WHERE id = $2`, [!!activo, id]);
-      res.json({ ok: true });
+      const { rowCount, rows } = await pool.query(
+        `UPDATE users
+            SET activo = $1
+          WHERE id = $2
+          RETURNING id, nombre, email, role, activo, to_char(created_at,'DD/MM/YYYY') AS creado`,
+        [!!activo, id]
+      );
+
+      if (!rowCount) {
+        await logBitacora(req, { operacion: 'USUARIO_ACTIVO', resultado: 'ERROR' });
+        return res.status(404).json({ error: 'Usuario no encontrado' });
+      }
+
+      await logBitacora(req, { operacion: 'USUARIO_ACTIVO', resultado: 'OK' });
+      res.json(rows[0]);
     } catch (e) {
+      await logBitacora(req, { operacion: 'USUARIO_ACTIVO', resultado: 'ERROR' });
       console.error('❌ /api/users PUT activo:', e);
       res.status(500).json({ error: 'Error al actualizar usuario' });
     }
@@ -97,15 +160,24 @@ router.put('/:id/activo',
  * DELETE /api/users/:id
  * Elimina (solo ADMINISTRADOR)
  */
-router.delete('/:id',
+router.delete(
+  '/:id',
   requireAuth,
   requireRole('ADMINISTRADOR'),
   async (req, res) => {
     try {
       const { id } = req.params;
-      await pool.query(`DELETE FROM users WHERE id = $1`, [id]);
+      const { rowCount } = await pool.query(`DELETE FROM users WHERE id = $1`, [id]);
+
+      if (!rowCount) {
+        await logBitacora(req, { operacion: 'USUARIO_BAJA', resultado: 'ERROR' });
+        return res.status(404).json({ error: 'Usuario no encontrado' });
+      }
+
+      await logBitacora(req, { operacion: 'USUARIO_BAJA', resultado: 'OK' });
       res.json({ ok: true });
     } catch (e) {
+      await logBitacora(req, { operacion: 'USUARIO_BAJA', resultado: 'ERROR' });
       console.error('❌ /api/users DELETE:', e);
       res.status(500).json({ error: 'Error al eliminar usuario' });
     }
@@ -114,22 +186,25 @@ router.delete('/:id',
 
 /**
  * GET /api/users/importadores
- * Devuelve lista { id, nombre } para el selector de importadores
- * (Transportista, Admin y Agente pueden ver).
+ * Devuelve lista { id, nombre } para el selector de importadores.
  */
-router.get('/importadores',
+router.get(
+  '/importadores',
   requireAuth,
   requireAnyRole('TRANSPORTISTA', 'ADMINISTRADOR', 'AGENTE_ADUANERO'),
-  async (_req, res) => {
+  async (req, res) => {
     try {
       const { rows } = await pool.query(
         `SELECT id, nombre
-         FROM users
-         WHERE role = 'IMPORTADOR' AND activo = true
-         ORDER BY nombre ASC`
+           FROM users
+          WHERE role = 'IMPORTADOR' AND activo = true
+          ORDER BY nombre ASC`
       );
+
+      await logBitacora(req, { operacion: 'IMPORTADORES_LISTA', resultado: 'OK' });
       res.json(rows);
     } catch (e) {
+      await logBitacora(req, { operacion: 'IMPORTADORES_LISTA', resultado: 'ERROR' });
       console.error('❌ /api/users/importadores:', e);
       res.status(500).json({ error: 'Error al listar importadores' });
     }

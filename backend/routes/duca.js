@@ -6,21 +6,8 @@ const pool = require('../db');
 const requireAuth = require('../middleware/requireAuth');
 const requireRole = require('../middleware/requireRole');
 const requireAnyRole = require('../middleware/requireAnyRole');
+const { logBitacora } = require('../utils/bitacora'); // <-- NUEVO
 
-/*
-  Esquema usado (coincide con tu SQL):
-
-  declaraciones(
-    id SERIAL PRIMARY KEY,
-    numero_documento TEXT UNIQUE NOT NULL,
-    estado TEXT CHECK (estado IN ('PENDIENTE','VALIDADA','RECHAZADA')) NOT NULL,
-    duca_json JSONB NOT NULL,
-    user_id INTEGER REFERENCES users(id),
-    motivo_rechazo TEXT,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-    validated_at TIMESTAMP
-  )
-*/
 
 // ======================================================
 // Enviar DUCA (TRANSPORTISTA)
@@ -33,14 +20,17 @@ router.post('/enviar', requireAuth, requireRole('TRANSPORTISTA'), async (req, re
     const numero = duca.numeroDocumento;
     if (!numero) return res.status(400).json({ error: 'Falta numeroDocumento.' });
 
-    const ducaJSON = JSON.stringify(duca); // guardamos tal cual llega
-
+    // Guardamos el objeto JSON directamente (pg lo serializa) con cast a jsonb
     await pool.query(
       `INSERT INTO declaraciones (numero_documento, estado, duca_json, user_id)
        VALUES ($1, 'PENDIENTE', $2::jsonb, $3)`,
-      [numero, ducaJSON, req.user.id]
+      [numero, duca, req.user.id]
     );
 
+    // Bitácora usuarios (quién ejecuta la acción)
+    await logBitacora(req, { operacion: 'DUCA_ENVIAR', resultado: 'OK' });
+
+    // Bitácora específica de DUCA (histórico de documento)
     try {
       await pool.query(
         `INSERT INTO bitacora_duca (numero_documento, usuario, accion, detalle)
@@ -51,6 +41,7 @@ router.post('/enviar', requireAuth, requireRole('TRANSPORTISTA'), async (req, re
 
     res.json({ ok: true, numero });
   } catch (err) {
+    await logBitacora(req, { operacion: 'DUCA_ENVIAR', resultado: 'ERROR' });
     console.error('❌ /api/duca/enviar error:', err);
     res.status(500).json({ error: 'Error al guardar declaración.' });
   }
@@ -101,8 +92,12 @@ router.get(
       sql += ` ORDER BY created_at DESC`;
 
       const { rows } = await pool.query(sql, params);
+
+      await logBitacora(req, { operacion: 'DUCA_CONSULTA', resultado: 'OK' });
+
       res.json(rows);
     } catch (err) {
+      await logBitacora(req, { operacion: 'DUCA_CONSULTA', resultado: 'ERROR' });
       console.error('❌ /api/duca/consulta error:', err);
       res.status(500).json({ error: 'Error al obtener lista.' });
     }
@@ -141,11 +136,15 @@ router.get(
 
       const det = rows[0];
       if (req.user.role === 'TRANSPORTISTA' && det.user_id !== req.user.id) {
+        await logBitacora(req, { operacion: 'DUCA_DETALLE', resultado: 'ERROR' });
         return res.status(403).json({ error: 'Sin permisos para ver esta DUCA.' });
       }
 
+      await logBitacora(req, { operacion: 'DUCA_DETALLE', resultado: 'OK' });
+
       res.json(det);
     } catch (err) {
+      await logBitacora(req, { operacion: 'DUCA_DETALLE', resultado: 'ERROR' });
       console.error('❌ /api/duca/detalle error:', err);
       res.status(500).json({ error: 'Error al obtener detalle.' });
     }
@@ -155,7 +154,7 @@ router.get(
 // ======================================================
 // Pendientes para Agente
 // ======================================================
-router.get('/pendientes', requireAuth, requireRole('AGENTE_ADUANERO'), async (_req, res) => {
+router.get('/pendientes', requireAuth, requireRole('AGENTE_ADUANERO'), async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT numero_documento,
@@ -165,8 +164,12 @@ router.get('/pendientes', requireAuth, requireRole('AGENTE_ADUANERO'), async (_r
         WHERE estado = 'PENDIENTE'
         ORDER BY created_at DESC`
     );
+
+    await logBitacora(req, { operacion: 'DUCA_PENDIENTES', resultado: 'OK' });
+
     res.json(rows);
   } catch (err) {
+    await logBitacora(req, { operacion: 'DUCA_PENDIENTES', resultado: 'ERROR' });
     console.error('❌ /api/duca/pendientes error:', err);
     res.status(500).json({ error: 'Error al obtener pendientes.' });
   }
@@ -188,6 +191,8 @@ router.post('/aprobar/:numero', requireAuth, requireRole('AGENTE_ADUANERO'), asy
       [numero]
     );
 
+    await logBitacora(req, { operacion: 'DUCA_APROBAR', resultado: 'OK' });
+
     try {
       await pool.query(
         `INSERT INTO bitacora_duca (numero_documento, usuario, accion, detalle)
@@ -198,6 +203,7 @@ router.post('/aprobar/:numero', requireAuth, requireRole('AGENTE_ADUANERO'), asy
 
     res.json({ ok: true });
   } catch (err) {
+    await logBitacora(req, { operacion: 'DUCA_APROBAR', resultado: 'ERROR' });
     console.error('❌ /api/duca/aprobar error:', err);
     res.status(500).json({ error: 'Error al aprobar.' });
   }
@@ -221,6 +227,8 @@ router.post('/rechazar/:numero', requireAuth, requireRole('AGENTE_ADUANERO'), as
       [numero, motivo.trim()]
     );
 
+    await logBitacora(req, { operacion: 'DUCA_RECHAZAR', resultado: 'OK' });
+
     try {
       await pool.query(
         `INSERT INTO bitacora_duca (numero_documento, usuario, accion, detalle)
@@ -231,6 +239,7 @@ router.post('/rechazar/:numero', requireAuth, requireRole('AGENTE_ADUANERO'), as
 
     res.json({ ok: true });
   } catch (err) {
+    await logBitacora(req, { operacion: 'DUCA_RECHAZAR', resultado: 'ERROR' });
     console.error('❌ /api/duca/rechazar error:', err);
     res.status(500).json({ error: 'Error al rechazar.' });
   }

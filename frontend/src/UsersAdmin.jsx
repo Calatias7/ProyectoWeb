@@ -7,6 +7,8 @@ function useAuthHeader() {
   return { Authorization: `Bearer ${token}` };
 }
 
+const ROLES = ['IMPORTADOR', 'TRANSPORTISTA', 'AGENTE_ADUANERO', 'ADMINISTRADOR'];
+
 export default function UsersAdmin() {
   const headers = useAuthHeader();
 
@@ -17,6 +19,9 @@ export default function UsersAdmin() {
   const [q, setQ] = useState('');
   const [msg, setMsg] = useState('');
 
+  const [editId, setEditId] = useState(null);
+  const [editData, setEditData] = useState({ nombre: '', email: '', role: 'IMPORTADOR' });
+
   async function load() {
     setMsg('');
     try {
@@ -24,6 +29,8 @@ export default function UsersAdmin() {
       setUsers(data);
     } catch (e) { setMsg(e.response?.data?.error || 'Error al listar'); }
   }
+
+  useEffect(() => { load(); }, []);
 
   async function createUser(e) {
     e.preventDefault();
@@ -35,12 +42,6 @@ export default function UsersAdmin() {
     } catch (e) { alert(e.response?.data?.error || 'Error al crear'); }
   }
 
-  async function eliminar(id) {
-    if (!confirm('¿Eliminar usuario?')) return;
-    try { await axios.delete(`${API_BASE}/api/users/${id}`, { headers }); await load(); }
-    catch (e) { alert(e.response?.data?.error || 'Error al eliminar'); }
-  }
-
   async function toggleActivo(u) {
     try {
       const { data } = await axios.put(`${API_BASE}/api/users/${u.id}/activo`, { activo: !u.activo }, { headers });
@@ -48,7 +49,25 @@ export default function UsersAdmin() {
     } catch (e) { alert(e.response?.data?.error || 'Error al cambiar estado'); }
   }
 
-  useEffect(() => { load(); }, []);
+  function startEdit(u) {
+    setEditId(u.id);
+    setEditData({ nombre: u.nombre || '', email: u.email || '', role: u.role || 'IMPORTADOR' });
+  }
+
+  function cancelEdit() {
+    setEditId(null);
+    setEditData({ nombre: '', email: '', role: 'IMPORTADOR' });
+  }
+
+  async function saveEdit() {
+    try {
+      const { data } = await axios.put(`${API_BASE}/api/users/${editId}`, editData, { headers });
+      setUsers(prev => prev.map(x => x.id === editId ? data : x));
+      cancelEdit();
+    } catch (e) {
+      alert(e.response?.data?.error || 'Error al actualizar');
+    }
+  }
 
   return (
     <div style={{ display:'grid', gap:16 }}>
@@ -58,16 +77,14 @@ export default function UsersAdmin() {
         <input placeholder="Nombre" value={form.nombre} onChange={e=>setForm({...form, nombre:e.target.value})} />
         <input placeholder="Correo" value={form.email} onChange={e=>setForm({...form, email:e.target.value})} />
         <select value={form.role} onChange={e=>setForm({...form, role:e.target.value})}>
-          <option value="IMPORTADOR">IMPORTADOR</option>
-          <option value="TRANSPORTISTA">TRANSPORTISTA</option>
-          <option value="AGENTE_ADUANERO">AGENTE_ADUANERO</option>
-          <option value="ADMINISTRADOR">ADMINISTRADOR</option>
+          {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
         </select>
         <label style={{ display:'flex', alignItems:'center', gap:8 }}>
           <input type="checkbox" checked={form.activo} onChange={e=>setForm({...form, activo:e.target.checked})} />
           Activo
         </label>
-        <input placeholder="Contraseña (opcional)" value={form.password} onChange={e=>setForm({...form, password:e.target.value})} />
+        <input type="password" placeholder="Contraseña (opcional)"
+               value={form.password} onChange={e=>setForm({...form, password:e.target.value})} />
         <button type="submit">Nuevo usuario</button>
       </form>
 
@@ -77,30 +94,71 @@ export default function UsersAdmin() {
       </div>
 
       <table border="1" cellPadding="6" style={{ borderCollapse:'collapse', width:'100%' }}>
-        <thead>
+        <thead style={{ background:'#eee' }}>
           <tr>
             <th style={{ width:60 }}>ID</th>
             <th>Nombre</th>
             <th>Email</th>
-            <th style={{ width:180 }}>Rol</th>
-            <th style={{ width:90 }}>Activo</th>
-            <th style={{ width:220 }}>Acciones</th>
+            <th style={{ width:200 }}>Rol</th>
+            <th style={{ width:100 }}>Estado</th>
+            <th style={{ width:260 }}>Acciones</th>
           </tr>
         </thead>
         <tbody>
-          {users.map(u => (
-            <tr key={u.id}>
-              <td>{u.id}</td>
-              <td>{u.nombre || '-'}</td>
-              <td>{u.email}</td>
-              <td>{u.role}</td>
-              <td>{u.activo ? 'Sí' : 'No'}</td>
-              <td style={{ display:'flex', gap:8 }}>
-                <button type="button" onClick={() => toggleActivo(u)}>{u.activo ? 'Desactivar' : 'Activar'}</button>
-                <button type="button" onClick={() => eliminar(u.id)}>Eliminar</button>
-              </td>
-            </tr>
-          ))}
+          {users.map(u => {
+            const editing = u.id === editId;
+            return (
+              <tr key={u.id}>
+                <td>{u.id}</td>
+                <td>
+                  {editing
+                    ? <input value={editData.nombre}
+                             onChange={e=>setEditData({...editData, nombre:e.target.value})}
+                             style={{ width:'100%' }} />
+                    : (u.nombre || '-')}
+                </td>
+                <td>
+                  {editing
+                    ? <input value={editData.email}
+                             onChange={e=>setEditData({...editData, email:e.target.value})}
+                             style={{ width:'100%' }} />
+                    : u.email}
+                </td>
+                <td>
+                  {editing
+                    ? (
+                      <select value={editData.role}
+                              onChange={e=>setEditData({...editData, role:e.target.value})}
+                              style={{ width:'100%' }}>
+                        {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    )
+                    : u.role}
+                </td>
+                <td style={{ color: u.activo ? 'green' : 'red', fontWeight:'bold' }}>
+                  {u.activo ? 'Activo' : 'Inactivo'}
+                </td>
+                <td style={{ display:'flex', gap:8 }}>
+                  {!editing ? (
+                    <>
+                      <button type="button" onClick={() => startEdit(u)}>Editar</button>
+                      <button type="button" onClick={() => toggleActivo(u)}>
+                        {u.activo ? 'Inactivar' : 'Activar'}
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button type="button" onClick={saveEdit}>Guardar</button>
+                      <button type="button" onClick={cancelEdit}>Cancelar</button>
+                      <button type="button" onClick={() => toggleActivo(u)}>
+                        {u.activo ? 'Inactivar' : 'Activar'}
+                      </button>
+                    </>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
 

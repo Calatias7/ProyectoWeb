@@ -1,8 +1,9 @@
 -- ==========================================
 -- BASE DE DATOS SIGLAD (PostgreSQL)
+-- Versión completa con bitácoras y triggers
 -- ==========================================
 
--- Elimina si existe (solo para desarrollo)
+-- Limpieza (solo en desarrollo)
 DROP TABLE IF EXISTS bitacora_duca CASCADE;
 DROP TABLE IF EXISTS bitacora_usuarios CASCADE;
 DROP TABLE IF EXISTS declaraciones CASCADE;
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS declaraciones (
   validated_at TIMESTAMP
 );
 
+COMMENT ON TABLE declaraciones IS 'Declaraciones aduaneras (DUCA)';
 COMMENT ON COLUMN declaraciones.duca_json IS 'Contenido completo de la DUCA en formato JSONB';
 COMMENT ON COLUMN declaraciones.motivo_rechazo IS 'Motivo del rechazo si aplica';
 
@@ -49,15 +51,25 @@ CREATE INDEX IF NOT EXISTS idx_declaraciones_numero ON declaraciones(numero_docu
 -- ==========================================
 -- 3️⃣ BITÁCORAS
 -- ==========================================
+
+-- Bitácora de usuarios (acciones generales)
 CREATE TABLE IF NOT EXISTS bitacora_usuarios (
   id SERIAL PRIMARY KEY,
   usuario TEXT,
+  actor_id INTEGER,
   ip_origen TEXT,
   operacion TEXT,
   resultado TEXT,
-  fecha_registro TIMESTAMP NOT NULL DEFAULT NOW()
+  fecha_registro TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT fk_bitacora_usuarios_actor FOREIGN KEY (actor_id)
+      REFERENCES users(id) ON DELETE SET NULL
 );
 
+COMMENT ON TABLE bitacora_usuarios IS 'Registro de acciones de usuarios (login, CRUD, validaciones, etc).';
+CREATE INDEX IF NOT EXISTS idx_bitacora_usuarios_actor ON bitacora_usuarios(actor_id);
+CREATE INDEX IF NOT EXISTS idx_bitacora_usuarios_fecha ON bitacora_usuarios(fecha_registro);
+
+-- Bitácora DUCA (historial de cada declaración)
 CREATE TABLE IF NOT EXISTS bitacora_duca (
   id SERIAL PRIMARY KEY,
   numero_documento TEXT,
@@ -67,8 +79,7 @@ CREATE TABLE IF NOT EXISTS bitacora_duca (
   fecha_registro TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
-COMMENT ON TABLE bitacora_duca IS 'Registra acciones sobre las declaraciones DUCA';
-COMMENT ON TABLE bitacora_usuarios IS 'Registra accesos y operaciones de los usuarios';
+COMMENT ON TABLE bitacora_duca IS 'Historial de eventos sobre declaraciones DUCA.';
 
 -- ==========================================
 -- 4️⃣ CATÁLOGOS
@@ -107,20 +118,13 @@ INSERT INTO paises (iso2, nombre) VALUES
   ('PA', 'Panamá')
 ON CONFLICT DO NOTHING;
 
--- Usuarios de prueba
--- Contraseñas deben generarse desde Node con bcrypt.hash('clave', 10)
-INSERT INTO users (nombre, email, password_hash, role) VALUES
-  ('Admin Principal', 'admin@siglad.com', '$2a$10$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 'ADMINISTRADOR'),
-  ('Transportista 1', 'trans1@siglad.com', '$2a$10$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 'TRANSPORTISTA'),
-  ('Agente Aduanero 1', 'agente1@siglad.com', '$2a$10$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 'AGENTE_ADUANERO'),
-  ('Importador 1', 'import1@siglad.com', '$2a$10$xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx', 'IMPORTADOR')
-ON CONFLICT DO NOTHING;
+
 
 -- ==========================================
 -- 6️⃣ VISTAS ÚTILES
 -- ==========================================
 
--- Vista simple para facilitar consultas de auditoría
+-- Vista de detalle de declaraciones
 CREATE OR REPLACE VIEW v_declaraciones_detalle AS
 SELECT
   d.id,
@@ -135,10 +139,26 @@ SELECT
 FROM declaraciones d
 JOIN users u ON u.id = d.user_id;
 
--- ==========================================
--- 7️⃣ TRIGGER DE BITÁCORA
--- ==========================================
+-- Vista de bitácora unificada
+CREATE OR REPLACE VIEW v_bitacora_usuarios AS
+SELECT
+  b.id,
+  b.fecha_registro,
+  b.operacion,
+  b.resultado,
+  b.usuario,
+  b.ip_origen,
+  b.actor_id,
+  u.nombre AS actor_nombre,
+  u.email  AS actor_email,
+  u.role   AS actor_rol
+FROM bitacora_usuarios b
+LEFT JOIN users u ON u.id = b.actor_id
+ORDER BY b.fecha_registro DESC;
 
+-- ==========================================
+-- 7️⃣ TRIGGER DE BITÁCORA DUCA
+-- ==========================================
 CREATE OR REPLACE FUNCTION log_bitacora_duca()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -161,8 +181,10 @@ FOR EACH ROW
 EXECUTE FUNCTION log_bitacora_duca();
 
 -- ==========================================
--- 8️⃣ CONSULTA DE PRUEBA
+-- 8️⃣ CONSULTAS DE PRUEBA
 -- ==========================================
--- SELECT * FROM v_declaraciones_detalle;
--- SELECT * FROM bitacora_duca ORDER BY fecha_registro DESC;
--- SELECT numero_documento, estado, motivo_rechazo FROM declaraciones;
+
+-- Ver todo
+--SELECT * FROM v_declaraciones_detalle LIMIT 5;
+--SELECT * FROM v_bitacora_usuarios LIMIT 5;
+--SELECT * FROM bitacora_duca ORDER BY fecha_registro DESC LIMIT 5;

@@ -1,5 +1,5 @@
 // backend/utils/bitacoraConsulta.js
-const { pool } = require('../db');
+const pool = require('../db'); 
 async function logConsulta({ usuario, ip, numero_declaracion }) {
   await pool.query(
     `INSERT INTO bitacora_declaraciones (usuario, ip_origen, operacion, resultado, numero_declaracion)
