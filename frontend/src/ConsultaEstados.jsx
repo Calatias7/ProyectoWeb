@@ -1,17 +1,13 @@
-// frontend/src/ConsultaEstados.jsx
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { API_BASE } from './api';
 
-/** Utilidad segura para leer paths anidados */
 function get(o, path) {
   return path.split('.').reduce((acc, k) => (acc && acc[k] !== undefined ? acc[k] : undefined), o);
 }
-
-/** Lee el primer path que exista (para compatibilidad hacia atrás) */
-function getMulti(o, paths) {
+function getAny(o, paths = []) {
   for (const p of paths) {
     const v = get(o, p);
-    if (v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === '')) return v;
+    if (v !== undefined && v !== null && v !== '') return v;
   }
   return undefined;
 }
@@ -54,28 +50,12 @@ export default function ConsultaEstados() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estadoFiltro]);
 
-  // Derivados para mostrar transporte con compatibilidad
   const duca = detalle?.duca || {};
-  const medioTransporte = useMemo(
-    () => getMulti(duca, ['transporte.medioTransporte', 'transporte.medio']) || '-',
-    [duca]
-  );
-  const placaVehiculo = useMemo(
-    () => getMulti(duca, ['transporte.placaVehiculo', 'transporte.placa']) || '-',
-    [duca]
-  );
-  const aduanaSalida = useMemo(
-    () => getMulti(duca, ['transporte.ruta.aduanaSalida', 'transporte.aduanaSalida']) || '-',
-    [duca]
-  );
-  const aduanaEntrada = useMemo(
-    () => getMulti(duca, ['transporte.ruta.aduanaEntrada', 'transporte.aduanaEntrada']) || '-',
-    [duca]
-  );
-  const paisDestino = useMemo(
-    () => getMulti(duca, ['transporte.ruta.paisDestino', 'transporte.paisDestino']) || '-',
-    [duca]
-  );
+  const tMedio = getAny(duca, ['transporte.medio', 'transporte.medioTransporte']) || '-';
+  const tPlaca = getAny(duca, ['transporte.placa', 'transporte.placaVehiculo']) || '-';
+  const tAduanaSalida = getAny(duca, ['transporte.aduanaSalida', 'transporte.ruta.aduanaSalida']) || '-';
+  const tAduanaEntrada = getAny(duca, ['transporte.aduanaEntrada', 'transporte.ruta.aduanaEntrada']) || '-';
+  const tPaisDestino = getAny(duca, ['transporte.paisDestino', 'transporte.ruta.paisDestino']) || '-';
 
   return (
     <div style={{ marginTop: 16 }}>
@@ -135,6 +115,14 @@ export default function ConsultaEstados() {
           )}
 
           <fieldset style={{ marginTop: 8 }}>
+            <legend>Declaración</legend>
+            <p><b>N° Documento:</b> {duca?.numeroDocumento || '-'}</p>
+            <p><b>Fecha emisión:</b> {duca?.fechaEmision || '-'}</p>
+            <p><b>País emisor:</b> {duca?.paisEmisor || '-'}</p>
+            <p><b>Tipo operación:</b> {duca?.tipoOperacion || '-'}</p>
+          </fieldset>
+
+          <fieldset style={{ marginTop: 8 }}>
             <legend>Importador</legend>
             <p><b>ID:</b> {duca?.importador?.idImportador || '-'}</p>
             <p><b>Nombre:</b> {duca?.importador?.nombreImportador || '-'}</p>
@@ -142,11 +130,11 @@ export default function ConsultaEstados() {
 
           <fieldset style={{ marginTop: 8 }}>
             <legend>Transporte</legend>
-            <p><b>Medio:</b> {medioTransporte}</p>
-            <p><b>Placa:</b> {placaVehiculo}</p>
-            <p><b>Aduana salida:</b> {aduanaSalida}</p>
-            <p><b>Aduana entrada:</b> {aduanaEntrada}</p>
-            <p><b>País destino:</b> {paisDestino}</p>
+            <p><b>Medio:</b> {tMedio}</p>
+            <p><b>Placa:</b> {tPlaca}</p>
+            <p><b>Aduana salida:</b> {tAduanaSalida}</p>
+            <p><b>Aduana entrada:</b> {tAduanaEntrada}</p>
+            <p><b>País destino:</b> {tPaisDestino}</p>
           </fieldset>
 
           <fieldset style={{ marginTop: 8 }}>
@@ -173,9 +161,6 @@ export default function ConsultaEstados() {
                     <td>{m?.valorUnitario ?? '-'}</td>
                   </tr>
                 ))}
-                {(!duca?.mercancias?.items || duca?.mercancias?.items.length === 0) && (
-                  <tr><td colSpan="6">Sin ítems</td></tr>
-                )}
               </tbody>
             </table>
           </fieldset>

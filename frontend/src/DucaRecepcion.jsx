@@ -1,4 +1,3 @@
-// frontend/src/DucaRecepcion.jsx
 import { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { API_BASE } from './api';
@@ -11,8 +10,12 @@ function useAuthHeader() {
 const UNIDADES = ['CAJA', 'PALETS', 'CONTENEDOR'];
 const PAISES_CA = ['GT', 'SV', 'HN', 'NI', 'CR', 'PA', 'BZ'];
 
-/* Tasas demo (base interna = GTQ) */
-const FX = { GTQ: 1, USD: 0.128 };
+/* Tasas de ejemplo (base interna = GTQ). */
+const FX = {
+  GTQ: 1,
+  USD: 0.128, // ajusta si lo deseas
+};
+
 const f2 = (n) => (Math.round((Number(n) || 0) * 100) / 100).toFixed(2);
 
 function hoyISO() { return new Date().toISOString().slice(0, 10); }
@@ -28,10 +31,11 @@ export default function DucaRecepcion() {
   const [numero, setNumero] = useState(randomDUCA());
   const [fechaEmision, setFechaEmision] = useState(hoyISO());
   const [paisEmisor] = useState('GT');
+  const [tipoOperacion, setTipoOperacion] = useState('IMPORTACION'); // NUEVO
 
-  // Transporte
-  const [medioTransporte, setMedioTransporte] = useState('TERRESTRE');
-  const [placaVehiculo, setPlacaVehiculo] = useState('');
+  // Transporte (usaremos nombres estandarizados)
+  const [medio, setMedio] = useState('TERRESTRE');
+  const [placa, setPlaca] = useState('');
 
   // Aduanas
   const [aduanas, setAduanas] = useState([]);
@@ -64,7 +68,7 @@ export default function DucaRecepcion() {
   // UI
   const [msg, setMsg] = useState('');
 
-  // Totales calculados desde items
+  // Totales desde items (SIEMPRE)
   const totalCalc = useMemo(
     () => items.reduce((acc, it) => acc + (Number(it.cantidad) || 0) * (Number(it.valorUnitario) || 0), 0),
     [items]
@@ -75,7 +79,7 @@ export default function DucaRecepcion() {
     setValorAduanaTotal(t);
   }, [totalCalc]);
 
-  // Cargar importadores
+  // Cargas
   useEffect(() => {
     (async () => {
       try {
@@ -89,7 +93,6 @@ export default function DucaRecepcion() {
     })();
   }, []);
 
-  // Cargar aduanas
   useEffect(() => {
     (async () => {
       try {
@@ -106,11 +109,13 @@ export default function DucaRecepcion() {
     })();
   }, []);
 
-  // Conversión de moneda (convierte PU item a item)
+  // Conversión de moneda: convierte PU de cada item y luego totales se recalculan
   function onChangeMoneda(e) {
     const nueva = e.target.value;
     if (nueva === moneda) return;
-    const factor = (FX[nueva] || 1) / (FX[moneda] || 1);
+    const rateOld = FX[moneda] || 1;
+    const rateNew = FX[nueva] || 1;
+    const factor = rateNew / rateOld;
 
     setItems((prev) =>
       prev.map((it) => ({
@@ -130,14 +135,17 @@ export default function DucaRecepcion() {
       numeroDocumento: numero,
       fechaEmision,
       paisEmisor,
+      tipoOperacion, // NUEVO
       importador: {
         idImportador: importadorSel.id,
         nombreImportador: importadorSel.nombre,
       },
       transporte: {
-        medioTransporte,
-        placaVehiculo,
-        ruta: { aduanaSalida, aduanaEntrada, paisDestino },
+        medio,        // estandarizado
+        placa,        // estandarizado
+        aduanaSalida, // estandarizado
+        aduanaEntrada,
+        paisDestino,
       },
       mercancias: {
         items: items.map((it, idx) => ({
@@ -179,6 +187,17 @@ export default function DucaRecepcion() {
         <input readOnly style={{ width: 80 }} value={paisEmisor} />
       </fieldset>
 
+      <fieldset>
+        <legend>Tipo de Operación</legend>
+        <select value={tipoOperacion} onChange={(e)=>setTipoOperacion(e.target.value)}>
+          <option value="IMPORTACION">Importación</option>
+          <option value="EXPORTACION">Exportación</option>
+          <option value="TRANSITO">Tránsito Internacional</option>
+          <option value="ADMISION_TEMPORAL">Admisión Temporal</option>
+          <option value="REEXPORTACION">Reexportación</option>
+        </select>
+      </fieldset>
+
       {/* Importador */}
       <fieldset>
         <legend>Importador</legend>
@@ -202,13 +221,13 @@ export default function DucaRecepcion() {
       <fieldset>
         <legend>Transporte</legend>
         Medio
-        <select value={medioTransporte} onChange={(e) => setMedioTransporte(e.target.value)}>
+        <select value={medio} onChange={(e) => setMedio(e.target.value)}>
           <option>TERRESTRE</option>
           <option>AEREO</option>
           <option>MARITIMO</option>
         </select>
         &nbsp; Placa
-        <input style={{ width: 150 }} value={placaVehiculo} onChange={(e) => setPlacaVehiculo(e.target.value)} />
+        <input style={{ width: 150 }} value={placa} onChange={(e) => setPlaca(e.target.value)} />
         &nbsp; Aduana salida
         <select value={aduanaSalida} onChange={(e) => setAduanaSalida(e.target.value)}>
           {aduanas.length === 0 && <option value="">-- Sin aduanas --</option>}

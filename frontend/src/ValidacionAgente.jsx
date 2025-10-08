@@ -1,68 +1,65 @@
-// frontend/src/ValidacionAgente.jsx
 import { useEffect, useMemo, useState } from 'react';
 import { API_BASE } from './api';
 
-/** Utilidad segura para leer paths anidados */
+/** Lee un path anidado: get(o, 'a.b.c') */
 function get(o, path) {
   return path.split('.').reduce((acc, k) => (acc && acc[k] !== undefined ? acc[k] : undefined), o);
 }
-
-/** Lee el primer path que exista (para compatibilidad hacia atrás) */
-function getMulti(o, paths) {
+/** Intenta varios paths y devuelve el primero que exista. */
+function getAny(o, paths = []) {
   for (const p of paths) {
     const v = get(o, p);
-    if (v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === '')) return v;
+    if (v !== undefined && v !== null && v !== '') return v;
   }
   return undefined;
 }
-
-/** Marca requerido considerando múltiples rutas posibles (retrocompatibilidad) */
-function reqMulti(duca, paths, label, faltantes) {
-  const v = getMulti(duca, paths);
-  const empty = v === undefined || v === null || (typeof v === 'string' && v.trim() === '');
+/** Campo requerido simple */
+function req(duca, path, label, faltantes) {
+  const v = get(duca, path);
+  const empty =
+    v === undefined ||
+    v === null ||
+    (typeof v === 'string' && v.trim() === '') ||
+    (typeof v === 'number' && Number.isNaN(v));
   if (empty) faltantes.push(label);
   return v;
 }
+/** Requerido pero tolerando varias rutas posibles */
+function reqAny(duca, paths, label, faltantes) {
+  const v = getAny(duca, paths);
+  if (
+    v === undefined ||
+    v === null ||
+    (typeof v === 'string' && v.trim() === '')
+  ) {
+    faltantes.push(label);
+  }
+  return v;
+}
 
-/** Valida y devuelve lista de faltantes human-readable */
+/** Valida DUCA y devuelve lista de faltantes human-readable */
 function validarDuca(duca) {
   const faltantes = [];
-  if (!duca || typeof duca !== 'object') {
-    return ['Estructura de DUCA vacía o inválida'];
-  }
+  if (!duca || typeof duca !== 'object') return ['Estructura de DUCA vacía o inválida'];
 
   // Declaración
-  reqMulti(duca, ['numeroDocumento'], 'N° Documento', faltantes);
-  reqMulti(duca, ['fechaEmision'], 'Fecha de emisión', faltantes);
-  reqMulti(duca, ['paisEmisor'], 'País emisor', faltantes);
-  // reqMulti(duca, ['tipoOperacion'], 'Tipo de operación', faltantes); // si lo usas
+  req(duca, 'numeroDocumento', 'N° Documento', faltantes);
+  req(duca, 'fechaEmision', 'Fecha de emisión', faltantes);
+  req(duca, 'paisEmisor', 'País emisor', faltantes);
+  req(duca, 'tipoOperacion', 'Tipo de operación', faltantes); // OBLIGATORIO
 
   // Importador
-  reqMulti(duca, ['importador.idImportador'], 'Importador - ID', faltantes);
-  reqMulti(duca, ['importador.nombreImportador'], 'Importador - Nombre', faltantes);
+  req(duca, 'importador.idImportador', 'Importador - ID', faltantes);
+  req(duca, 'importador.nombreImportador', 'Importador - Nombre', faltantes);
 
-  // Transporte (formato nuevo y soporte al viejo)
-  reqMulti(duca, ['transporte.medioTransporte', 'transporte.medio'], 'Transporte - Medio', faltantes);
-  // Placa opcional. Si la quieres obligatoria descomenta:
-  reqMulti(duca, ['transporte.placaVehiculo', 'transporte.placa'], 'Transporte - Placa', faltantes);
-  reqMulti(
-    duca,
-    ['transporte.ruta.aduanaSalida', 'transporte.aduanaSalida'],
-    'Transporte - Aduana salida',
-    faltantes
-  );
-  reqMulti(
-    duca,
-    ['transporte.ruta.aduanaEntrada', 'transporte.aduanaEntrada'],
-    'Transporte - Aduana entrada',
-    faltantes
-  );
-  reqMulti(
-    duca,
-    ['transporte.ruta.paisDestino', 'transporte.paisDestino'],
-    'Transporte - País destino',
-    faltantes
-  );
+  // Transporte (tolerante a ambos esquemas)
+  reqAny(duca, ['transporte.medio', 'transporte.medioTransporte'], 'Transporte - Medio', faltantes);
+  reqAny(duca, ['transporte.placa', 'transporte.placaVehiculo'], 'Transporte - Placa', faltantes);
+  
+  // Placa opcional: si querés obligatoria, usa reqAny(...) con label y paths.
+  reqAny(duca, ['transporte.aduanaSalida', 'transporte.ruta.aduanaSalida'], 'Transporte - Aduana salida', faltantes);
+  reqAny(duca, ['transporte.aduanaEntrada', 'transporte.ruta.aduanaEntrada'], 'Transporte - Aduana entrada', faltantes);
+  reqAny(duca, ['transporte.paisDestino', 'transporte.ruta.paisDestino'], 'Transporte - País destino', faltantes);
 
   // Mercancías
   const items = duca?.mercancias?.items || [];
@@ -70,22 +67,23 @@ function validarDuca(duca) {
     faltantes.push('Mercancías - Debe haber al menos 1 ítem');
   } else {
     items.forEach((it, idx) => {
+      const ix = idx + 1;
       if (it == null || typeof it !== 'object') {
-        faltantes.push(`Mercancías[${idx + 1}] - Ítem inválido`);
+        faltantes.push(`Mercancías[${ix}] - Ítem inválido`);
         return;
       }
-      if (!(it.cantidad > 0)) faltantes.push(`Mercancías[${idx + 1}] - Cantidad`);
-      if (!it.paisOrigen)   faltantes.push(`Mercancías[${idx + 1}] - País de origen`);
-      if (!it.descripcion)  faltantes.push(`Mercancías[${idx + 1}] - Descripción`);
-      if (!it.unidadMedida) faltantes.push(`Mercancías[${idx + 1}] - Unidad de medida`);
-      if (!(it.valorUnitario >= 0)) faltantes.push(`Mercancías[${idx + 1}] - Valor unitario`);
+      if (!(Number(it.cantidad) > 0)) faltantes.push(`Mercancías[${ix}] - Cantidad (>0)`);
+      if (!it.paisOrigen) faltantes.push(`Mercancías[${ix}] - País de origen`);
+      if (!it.descripcion) faltantes.push(`Mercancías[${ix}] - Descripción`);
+      if (!it.unidadMedida) faltantes.push(`Mercancías[${ix}] - Unidad de medida`);
+      if (!(Number(it.valorUnitario) >= 0)) faltantes.push(`Mercancías[${ix}] - Valor unitario (>=0)`);
     });
   }
 
   // Valores
-  reqMulti(duca, ['valores.moneda'], 'Valores - Moneda', faltantes);
-  if (!(duca?.valores?.valorFactura >= 0))     faltantes.push('Valores - Valor factura');
-  if (!(duca?.valores?.valorAduanaTotal >= 0)) faltantes.push('Valores - Valor aduana total');
+  req(duca, 'valores.moneda', 'Valores - Moneda', faltantes);
+  if (!(Number(duca?.valores?.valorFactura) >= 0)) faltantes.push('Valores - Valor factura (>=0)');
+  if (!(Number(duca?.valores?.valorAduanaTotal) >= 0)) faltantes.push('Valores - Valor aduana total (>=0)');
 
   return faltantes;
 }
@@ -168,17 +166,15 @@ export default function ValidacionAgente() {
     cargarPendientes();
   }, []);
 
-  // Calcula faltantes cuando hay detalle
   const faltantes = useMemo(() => validarDuca(detalle?.duca), [detalle]);
-
   const duca = detalle?.duca || {};
 
-  // Campos de transporte (nuevo + compatibilidad)
-  const medioTransporte = getMulti(duca, ['transporte.medioTransporte', 'transporte.medio']) || '-';
-  const placaVehiculo   = getMulti(duca, ['transporte.placaVehiculo', 'transporte.placa']) || '-';
-  const aduanaSalida    = getMulti(duca, ['transporte.ruta.aduanaSalida', 'transporte.aduanaSalida']) || '-';
-  const aduanaEntrada   = getMulti(duca, ['transporte.ruta.aduanaEntrada', 'transporte.aduanaEntrada']) || '-';
-  const paisDestino     = getMulti(duca, ['transporte.ruta.paisDestino', 'transporte.paisDestino']) || '-';
+  // Lecturas tolerantes para transporte y presentaciones
+  const tMedio = getAny(duca, ['transporte.medio', 'transporte.medioTransporte']) || '-';
+  const tPlaca = getAny(duca, ['transporte.placa', 'transporte.placaVehiculo']) || '-';
+  const tAduanaSalida = getAny(duca, ['transporte.aduanaSalida', 'transporte.ruta.aduanaSalida']) || '-';
+  const tAduanaEntrada = getAny(duca, ['transporte.aduanaEntrada', 'transporte.ruta.aduanaEntrada']) || '-';
+  const tPaisDestino = getAny(duca, ['transporte.paisDestino', 'transporte.ruta.paisDestino']) || '-';
 
   return (
     <div style={{ marginTop: 16 }}>
@@ -234,6 +230,7 @@ export default function ValidacionAgente() {
             <p><b>N° Documento:</b> {duca?.numeroDocumento || '-'}</p>
             <p><b>Fecha emisión:</b> {duca?.fechaEmision || '-'}</p>
             <p><b>País emisor:</b> {duca?.paisEmisor || '-'}</p>
+            <p><b>Tipo operación:</b> {duca?.tipoOperacion || '-'}</p>
           </fieldset>
 
           {/* Importador */}
@@ -243,14 +240,14 @@ export default function ValidacionAgente() {
             <p><b>Nombre:</b> {duca?.importador?.nombreImportador || '-'}</p>
           </fieldset>
 
-          {/* Transporte (normalizado) */}
+          {/* Transporte */}
           <fieldset style={{ marginTop: 8 }}>
             <legend>Transporte</legend>
-            <p><b>Medio:</b> {medioTransporte}</p>
-            <p><b>Placa:</b> {placaVehiculo}</p>
-            <p><b>Aduana salida:</b> {aduanaSalida}</p>
-            <p><b>Aduana entrada:</b> {aduanaEntrada}</p>
-            <p><b>País destino:</b> {paisDestino}</p>
+            <p><b>Medio:</b> {tMedio}</p>
+            <p><b>Placa:</b> {tPlaca}</p>
+            <p><b>Aduana salida:</b> {tAduanaSalida}</p>
+            <p><b>Aduana entrada:</b> {tAduanaEntrada}</p>
+            <p><b>País destino:</b> {tPaisDestino}</p>
           </fieldset>
 
           {/* Mercancías */}
@@ -292,15 +289,6 @@ export default function ValidacionAgente() {
             <p><b>Valor factura:</b> {duca?.valores?.valorFactura ?? '-'}</p>
             <p><b>Valor aduana total:</b> {duca?.valores?.valorAduanaTotal ?? '-'}</p>
           </fieldset>
-
-          {/* Final / Firma (si aplica) */}
-          {(duca?.final || duca?.firmaElectronica) && (
-            <fieldset style={{ marginTop: 8 }}>
-              <legend>Final</legend>
-              <p><b>Estado documento:</b> {duca?.final?.estadoDocumento || '-'}</p>
-              <p><b>Firma electrónica:</b> {duca?.final?.firmaElectronica || duca?.firmaElectronica || '-'}</p>
-            </fieldset>
-          )}
 
           <div style={{ marginTop: 16 }}>
             <h4>Acción del agente aduanero</h4>
