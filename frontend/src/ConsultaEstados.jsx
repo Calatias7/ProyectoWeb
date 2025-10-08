@@ -1,134 +1,151 @@
-import { useEffect, useMemo, useState } from 'react';
-import axios from 'axios';
+// frontend/src/ConsultaEstados.jsx
+import { useEffect, useState } from 'react';
 import { API_BASE } from './api';
 
-function useAuthHeader(){ const t=localStorage.getItem('token'); return { Authorization:`Bearer ${t}` }; }
-function fmtDate(x){ if(!x) return '-'; try{return new Date(x).toLocaleString();}catch{return String(x);} }
-
-export default function ConsultaEstados(){
-  const headers = useAuthHeader();
-  const [items, setItems] = useState([]);
-  const [estado, setEstado] = useState('');
+export default function ConsultaEstados() {
+  const [estados, setEstados] = useState([]);
+  const [estadoFiltro, setEstadoFiltro] = useState('Todos');
   const [detalle, setDetalle] = useState(null);
-  const [msg, setMsg] = useState('');
 
-  async function load(){
-    setMsg('');
-    try{
-      const { data } = await axios.get(`${API_BASE}/api/consulta/mis`, { headers, params:{ estado: estado || undefined } });
-      setItems(data);
-    }catch(e){ setMsg(e.response?.data?.error || 'Error al cargar'); }
+  const token = localStorage.getItem('token');
+
+  async function cargarEstados() {
+    try {
+      const r = await fetch(`${API_BASE}/api/duca/consulta?estado=${encodeURIComponent(estadoFiltro)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await r.json();
+      setEstados(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error(e);
+      alert('Error al obtener las declaraciones.');
+    }
   }
 
-  async function ver(numero){
-    setMsg('');
-    try{
-      const { data } = await axios.get(`${API_BASE}/api/consulta/${numero}`, { headers });
+  async function verDetalle(numero) {
+    try {
+      const r = await fetch(`${API_BASE}/api/duca/detalle/${numero}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await r.json();
       setDetalle(data);
-    }catch(e){ setMsg(e.response?.data?.error || 'Error al obtener detalle'); }
+    } catch (e) {
+      console.error(e);
+      alert('Error al obtener detalle.');
+    }
   }
 
-  useEffect(()=>{ load(); },[]);
-
-  const dj = useMemo(()=> detalle ? (detalle.duca_json?.duca || detalle.duca_json || {}) : null, [detalle]);
+  useEffect(() => {
+    cargarEstados();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estadoFiltro]);
 
   return (
-    <div style={{ display:'grid', gap:12 }}>
+    <div style={{ marginTop: 16 }}>
       <h2>Consulta de Estados</h2>
 
-      <div>
-        Estado:&nbsp;
-        <select value={estado} onChange={e=>setEstado(e.target.value)}>
-          <option value="">Todos</option>
+      <div style={{ marginBottom: 8 }}>
+        <label>Estado:&nbsp;</label>
+        <select value={estadoFiltro} onChange={(e) => setEstadoFiltro(e.target.value)}>
+          <option>Todos</option>
           <option>PENDIENTE</option>
           <option>VALIDADA</option>
           <option>RECHAZADA</option>
         </select>
-        &nbsp;<button onClick={load}>Buscar</button>
+        &nbsp;
+        <button onClick={cargarEstados}>Buscar</button>
       </div>
 
-      <table border="1" cellPadding="6" style={{ borderCollapse:'collapse', width:'100%' }}>
+      <table border="1" cellPadding="4" style={{ width: '100%', borderCollapse: 'collapse' }}>
         <thead>
-          <tr>
+          <tr style={{ background: '#eee' }}>
             <th>DUCA</th>
             <th>Estado</th>
             <th>Creada</th>
-            <th>Revisado</th>
+            <th>Revisada</th>
             <th>Acción</th>
           </tr>
         </thead>
         <tbody>
-          {items.map(it=>(
-            <tr key={it.numero_documento}>
-              <td>{it.numero_documento}</td>
-              <td>{it.estado}</td>
-              <td>{fmtDate(it.created_at)}</td>
-              <td>{fmtDate(it.validated_at)}</td>
-              <td><button onClick={()=>ver(it.numero_documento)}>Ver detalle</button></td>
+          {estados.length === 0 ? (
+            <tr><td colSpan="5">No existe</td></tr>
+          ) : estados.map((e) => (
+            <tr key={e.numero_documento}>
+              <td>{e.numero_documento}</td>
+              <td>{e.estado}</td>
+              <td>{e.creada || '-'}</td>
+              <td>{e.revisada || '-'}</td>
+              <td><button onClick={() => verDetalle(e.numero_documento)}>Ver detalle</button></td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      {msg && <div style={{ color:'crimson' }}>{msg}</div>}
-
-      {dj && (
-        <div style={{ border:'1px solid #ccc', padding:12 }}>
+      {detalle && (
+        <div style={{ marginTop: 16, border: '1px solid #ccc', padding: 10 }}>
           <h3>Detalle {detalle.numero_documento}</h3>
-          <div><b>Estado:</b> {detalle.estado}</div>
-          <div><b>Creada:</b> {fmtDate(detalle.created_at)} &nbsp;|&nbsp; <b>Revisado:</b> {fmtDate(detalle.validated_at)}</div>
 
-          <fieldset style={{ marginTop:10 }}>
+          <p>
+            <b>Estado:</b> {detalle.estado} &nbsp;|&nbsp;
+            <b>Creada:</b> {detalle.creada} &nbsp;|&nbsp;
+            <b>Revisada:</b> {detalle.revisada}
+          </p>
+
+          {detalle.estado === 'RECHAZADA' && detalle.motivo_rechazo && (
+            <div style={{ background: '#fff2f2', border: '1px solid #f00', padding: 8, marginBottom: 10 }}>
+              <b>Motivo del rechazo:</b> {detalle.motivo_rechazo}
+            </div>
+          )}
+
+          <fieldset style={{ marginTop: 8 }}>
             <legend>Importador</legend>
-            <div><b>ID:</b> {dj.importador?.idImportador || '-'}</div>
-            <div><b>Nombre:</b> {dj.importador?.nombreImportador || '-'}</div>
+            <p><b>ID:</b> {detalle.duca?.importador?.idImportador || '-'}</p>
+            <p><b>Nombre:</b> {detalle.duca?.importador?.nombreImportador || '-'}</p>
           </fieldset>
 
-          <fieldset style={{ marginTop:10 }}>
+          <fieldset style={{ marginTop: 8 }}>
             <legend>Transporte</legend>
-            <div><b>Medio:</b> {dj.transporte?.medioTransporte || '-'}</div>
-            <div><b>Placa:</b> {dj.transporte?.placaVehiculo || '-'}</div>
-            <div><b>Aduana salida:</b> {dj.transporte?.ruta?.aduanaSalida || '-'}</div>
-            <div><b>Aduana entrada:</b> {dj.transporte?.ruta?.aduanaEntrada || '-'}</div>
-            <div><b>País destino:</b> {dj.transporte?.ruta?.paisDestino || '-'}</div>
+            <p><b>Medio:</b> {detalle.duca?.transporte?.medio || '-'}</p>
+            <p><b>Placa:</b> {detalle.duca?.transporte?.placa || '-'}</p>
+            <p><b>Aduana salida:</b> {detalle.duca?.transporte?.aduanaSalida || '-'}</p>
+            <p><b>Aduana entrada:</b> {detalle.duca?.transporte?.aduanaEntrada || '-'}</p>
+            <p><b>País destino:</b> {detalle.duca?.transporte?.paisDestino || '-'}</p>
           </fieldset>
 
-          <fieldset style={{ marginTop:10 }}>
+          <fieldset style={{ marginTop: 8 }}>
             <legend>Mercancías</legend>
-            <table border="1" cellPadding="6" style={{ width:'100%', borderCollapse:'collapse' }}>
-              <thead>
+            <table border="1" cellPadding="3" style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead style={{ background: '#eee' }}>
                 <tr>
-                  <th>#</th><th>Cant.</th><th>País</th><th>Descripción</th><th>Unidad</th><th>PU</th>
+                  <th>#</th>
+                  <th>Cant.</th>
+                  <th>País</th>
+                  <th>Descripción</th>
+                  <th>Unidad</th>
+                  <th>PU ({detalle.duca?.valores?.moneda || 'GTQ'})</th>
                 </tr>
               </thead>
               <tbody>
-                {(dj.mercancias?.items||[]).map((it, i)=>(
+                {(detalle.duca?.mercancias?.items || []).map((m, i) => (
                   <tr key={i}>
-                    <td>{it.linea || i+1}</td>
-                    <td>{it.cantidad}</td>
-                    <td>{it.paisOrigen}</td>
-                    <td>{it.descripcion}</td>
-                    <td>{it.unidadMedida}</td>
-                    <td>{it.valorUnitario}</td>
+                    <td>{i + 1}</td>
+                    <td>{m.cantidad}</td>
+                    <td>{m.paisOrigen}</td>
+                    <td>{m.descripcion}</td>
+                    <td>{m.unidadMedida}</td>
+                    <td>{m.valorUnitario}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </fieldset>
 
-          <fieldset style={{ marginTop:10 }}>
+          <fieldset style={{ marginTop: 8 }}>
             <legend>Valores</legend>
-            <div><b>Moneda:</b> {dj.valores?.moneda || '-'}</div>
-            <div><b>Valor factura:</b> {dj.valores?.valorFactura ?? '-'}</div>
-            <div><b>Valor aduana total:</b> {dj.valores?.valorAduanaTotal ?? '-'}</div>
+            <p><b>Moneda:</b> {detalle.duca?.valores?.moneda || 'GTQ'}</p>
+            <p><b>Valor factura:</b> {detalle.duca?.valores?.valorFactura} ({detalle.duca?.valores?.moneda || 'GTQ'})</p>
+            <p><b>Valor aduana total:</b> {detalle.duca?.valores?.valorAduanaTotal} ({detalle.duca?.valores?.moneda || 'GTQ'})</p>
           </fieldset>
-
-          {detalle.motivo_rechazo && (
-            <fieldset style={{ marginTop:10 }}>
-              <legend>Motivo de rechazo</legend>
-              <div>{detalle.motivo_rechazo}</div>
-            </fieldset>
-          )}
         </div>
       )}
     </div>

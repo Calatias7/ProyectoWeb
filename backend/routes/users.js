@@ -1,54 +1,139 @@
+// backend/routes/users.js
 const express = require('express');
+const router = express.Router();
 const bcrypt = require('bcryptjs');
-const { pool } = require('../db');
+
+const pool = require('../db'); // <<--- IMPORTACIÓN CORRECTA
 const requireAuth = require('../middleware/requireAuth');
 const requireRole = require('../middleware/requireRole');
+const requireAnyRole = require('../middleware/requireAnyRole');
 
-const router = express.Router();
+/**
+ * GET /api/users
+ * Lista usuarios (solo ADMINISTRADOR). Soporta ?q= para buscar por nombre o email.
+ */
+router.get('/',
+  requireAuth,
+  requireRole('ADMINISTRADOR'),
+  async (req, res) => {
+    try {
+      const q = (req.query.q || '').trim();
+      let sql = `
+        SELECT id, nombre, email, role, activo, to_char(created_at,'DD/MM/YYYY') AS creado
+        FROM users
+        WHERE 1=1
+      `;
+      const params = [];
+      if (q) {
+        params.push(`%${q.toLowerCase()}%`);
+        params.push(`%${q.toLowerCase()}%`);
+        sql += ` AND (LOWER(nombre) LIKE $${params.length - 1} OR LOWER(email) LIKE $${params.length})`;
+      }
+      sql += ` ORDER BY id DESC`;
 
-/* Listar usuarios */
-router.get('/', requireAuth, requireRole('ADMINISTRADOR'), async (req, res) => {
-  const q = (req.query.q || '').trim();
-  let sql = 'SELECT id,nombre,email,role,activo,created_at FROM users';
-  const params = [];
-  if (q) { sql += ' WHERE nombre ILIKE $1 OR email ILIKE $1'; params.push(`%${q}%`); }
-  sql += ' ORDER BY id DESC';
-  const { rows } = await pool.query(sql, params);
-  res.json(rows);
-});
+      const { rows } = await pool.query(sql, params);
+      res.json(rows);
+    } catch (e) {
+      console.error('❌ /api/users GET:', e);
+      res.status(500).json({ error: 'Error al listar usuarios' });
+    }
+  }
+);
 
-/* Crear usuario */
-router.post('/', requireAuth, requireRole('ADMINISTRADOR'), async (req, res) => {
-  const { nombre = '', email, role, activo = true, password } = req.body || {};
-  if (!email || !role) return res.status(400).json({ error: 'Email y rol son obligatorios' });
-  const exists = await pool.query('SELECT 1 FROM users WHERE email=$1', [email]);
-  if (exists.rowCount) return res.status(409).json({ error: 'El email ya existe' });
-  const hash = await bcrypt.hash(password || 'Cambiar123', 10);
-  const { rows } = await pool.query(
-    `INSERT INTO users (nombre,email,password_hash,role,activo)
-     VALUES ($1,$2,$3,$4,$5) RETURNING id,nombre,email,role,activo,created_at`,
-    [nombre, email, hash, role, !!activo]
-  );
-  res.status(201).json(rows[0]);
-});
+/**
+ * POST /api/users
+ * Crea usuario (solo ADMINISTRADOR). password es opcional (si viene, se hashea).
+ * body: { nombre, email, role, activo, password }
+ */
+router.post('/',
+  requireAuth,
+  requireRole('ADMINISTRADOR'),
+  async (req, res) => {
+    try {
+      const { nombre = '', email = '', role, activo = true, password = '' } = req.body;
+      if (!email || !role) return res.status(400).json({ error: 'Email y rol son obligatorios.' });
 
-/* Eliminar */
-router.delete('/:id', requireAuth, requireRole('ADMINISTRADOR'), async (req, res) => {
-  const del = await pool.query('DELETE FROM users WHERE id=$1 RETURNING id', [req.params.id]);
-  if (!del.rowCount) return res.status(404).json({ error: 'No encontrado' });
-  res.json({ ok: true });
-});
+      let password_hash = 'x';
+      if (password && password.trim()) {
+        password_hash = await bcrypt.hash(password.trim(), 10);
+      }
 
-/* Activar/Desactivar */
-router.put('/:id/activo', requireAuth, requireRole('ADMINISTRADOR'), async (req, res) => {
-  const { activo } = req.body || {};
-  if (typeof activo !== 'boolean') return res.status(400).json({ error: 'activo debe ser booleano' });
-  const up = await pool.query(
-    'UPDATE users SET activo=$1 WHERE id=$2 RETURNING id,nombre,email,role,activo,created_at',
-    [activo, req.params.id]
-  );
-  if (!up.rowCount) return res.status(404).json({ error: 'No encontrado' });
-  res.json(up.rows[0]);
-});
+      await pool.query(
+        `INSERT INTO users (nombre, email, password_hash, role, activo)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [nombre, email.toLowerCase(), password_hash, role, !!activo]
+      );
+
+      res.json({ ok: true });
+    } catch (e) {
+      console.error('❌ /api/users POST:', e);
+      if (e.code === '23505') return res.status(400).json({ error: 'El email ya existe.' });
+      res.status(500).json({ error: 'Error al crear usuario' });
+    }
+  }
+);
+
+/**
+ * PUT /api/users/:id/activo
+ * Activa/Desactiva (solo ADMINISTRADOR)
+ */
+router.put('/:id/activo',
+  requireAuth,
+  requireRole('ADMINISTRADOR'),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { activo } = req.body;
+      await pool.query(`UPDATE users SET activo = $1 WHERE id = $2`, [!!activo, id]);
+      res.json({ ok: true });
+    } catch (e) {
+      console.error('❌ /api/users PUT activo:', e);
+      res.status(500).json({ error: 'Error al actualizar usuario' });
+    }
+  }
+);
+
+/**
+ * DELETE /api/users/:id
+ * Elimina (solo ADMINISTRADOR)
+ */
+router.delete('/:id',
+  requireAuth,
+  requireRole('ADMINISTRADOR'),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      await pool.query(`DELETE FROM users WHERE id = $1`, [id]);
+      res.json({ ok: true });
+    } catch (e) {
+      console.error('❌ /api/users DELETE:', e);
+      res.status(500).json({ error: 'Error al eliminar usuario' });
+    }
+  }
+);
+
+/**
+ * GET /api/users/importadores
+ * Devuelve lista { id, nombre } para el selector de importadores
+ * (Transportista, Admin y Agente pueden ver).
+ */
+router.get('/importadores',
+  requireAuth,
+  requireAnyRole('TRANSPORTISTA', 'ADMINISTRADOR', 'AGENTE_ADUANERO'),
+  async (_req, res) => {
+    try {
+      const { rows } = await pool.query(
+        `SELECT id, nombre
+         FROM users
+         WHERE role = 'IMPORTADOR' AND activo = true
+         ORDER BY nombre ASC`
+      );
+      res.json(rows);
+    } catch (e) {
+      console.error('❌ /api/users/importadores:', e);
+      res.status(500).json({ error: 'Error al listar importadores' });
+    }
+  }
+);
 
 module.exports = router;

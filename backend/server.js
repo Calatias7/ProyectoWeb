@@ -7,6 +7,7 @@ const usersRoutes = require('./routes/users');
 const ducaRoutes = require('./routes/duca');
 const consultaRoutes = require('./routes/consulta');
 const validacionRoutes = require('./routes/validacion');
+const catalogosRoutes = require('./routes/catalogos'); 
 
 const app = express();
 app.set('trust proxy', 1);
@@ -20,6 +21,8 @@ app.use('/api/users', usersRoutes);
 app.use('/api/duca', ducaRoutes);
 app.use('/api/consulta', consultaRoutes);
 app.use('/api/validacion', validacionRoutes);
+app.use('/api/catalogos', catalogosRoutes); 
+
 
 // 404
 app.use((req,res)=>res.status(404).json({ error:'Ruta no encontrada' }));

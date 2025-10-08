@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS declaraciones (
 CREATE INDEX IF NOT EXISTS idx_declaraciones_user_id ON declaraciones(user_id);
 CREATE INDEX IF NOT EXISTS idx_declaraciones_estado ON declaraciones(estado);
 
+
+
 -- Bitácoras
 CREATE TABLE IF NOT EXISTS bitacora_usuarios (
   id SERIAL PRIMARY KEY,
@@ -42,7 +44,7 @@ CREATE TABLE IF NOT EXISTS bitacora_duca (
   fecha_registro TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
--- Catálogos (opcionales)
+-- Catálogos
 CREATE TABLE IF NOT EXISTS aduanas (
   id SERIAL PRIMARY KEY,
   codigo TEXT UNIQUE NOT NULL,
@@ -59,3 +61,11 @@ INSERT INTO paises (iso2,nombre) VALUES
   ('GT','Guatemala'),('SV','El Salvador'),('HN','Honduras'),
   ('NI','Nicaragua'),('CR','Costa Rica'),('PA','Panamá'),('BZ','Belice')
 ON CONFLICT (iso2) DO NOTHING;
+
+
+INSERT INTO aduanas (codigo, nombre) VALUES
+  ('GUA-001','Aduana La Mesilla'),
+  ('GUA-002','Aduana Puerto Quetzal'),
+  ('SLV-001','Aduana San Cristóbal'),
+  ('HND-001','Aduana El Amatillo')
+ON CONFLICT (codigo) DO NOTHING;
