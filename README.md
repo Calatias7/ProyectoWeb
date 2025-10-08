@@ -1,23 +1,23 @@
-# 🚛 SIGLAD — Sistema Integrado de Gestión Logística Aduanera y Declaraciones
+# SIGLAD — Sistema Integrado de Gestión Logística Aduanera y Declaraciones
 
-**SIGLAD** es una plataforma web diseñada para la gestión completa de declaraciones aduaneras electrónicas (DUCA), validación de agentes aduaneros y control de usuarios con distintos roles administrativos.  
-Permite el registro, envío, consulta y validación de documentos de transporte dentro de la región centroamericana.
+**SIGLAD** es una plataforma web integral para la **gestión, validación y control de declaraciones aduaneras electrónicas (DUCA)**.  
+Incluye autenticación por roles, bitácoras automáticas y manejo de catálogos (aduanas, países, importadores) conectados a **PostgreSQL**.  
+Permite registrar, enviar, revisar, aprobar o rechazar declaraciones de transporte regional bajo el esquema **DUCA Centroamérica**.
 
 ---
 
-## 📂 Estructura del proyecto
+## Estructura del proyecto
 
 ```
-siglad/
+siglad_proyecto/
 ├── backend/              # API Node.js + Express + PostgreSQL
-│   ├── routes/           # Rutas: auth, users, duca, consulta, validación
-│   ├── middleware/       # Autenticación y control de roles
-│   ├── scripts/          # Scripts utilitarios (seed admin)
-│   ├── db.js             # Conexión a PostgreSQL
+│   ├── routes/           # auth, users, duca, catalogos
+│   ├── middleware/       # requireAuth, requireRole, requireAnyRole
+│   ├── scripts/          # seed-admin.js
+│   ├── db.js             # Configuración Pool PostgreSQL
 │   ├── server.js         # Servidor principal Express
 │   ├── package.json
-│   ├── .env.example      # Variables de entorno base
-│   └── .gitignore
+│   └── .env.example
 │
 ├── frontend/             # Interfaz React + Vite
 │   ├── src/
@@ -32,75 +32,90 @@ siglad/
 │   └── vite.config.js
 │
 └── database/
-    └── schema.sql        # Estructura de base de datos PostgreSQL
+    └── script.sql        # Esquema completo PostgreSQL
 ```
 
 ---
 
-## 🧠 Funcionalidades principales
+## Funcionalidades principales
 
-| Rol | Permisos | Descripción |
-|-----|-----------|--------------|
-| **Administrador** | 👥 CRUD de usuarios, control de roles y estados | Gestiona usuarios activos/inactivos y crea cuentas nuevas |
-| **Transportista** | 🚚 Registro y envío de DUCA | Crea declaraciones con datos de transporte, mercancías, valores y monedas |
-| **Agente Aduanero** | 🧾 Validación | Consulta declaraciones pendientes y puede **Aprobar** o **Rechazar** (con motivo obligatorio) |
-| **Importador** | 🔎 Consulta | Visualiza el estado y detalles de sus declaraciones aduaneras |
-
----
-
-## 🏗️ Arquitectura
-
-- **Backend:** Node.js + Express  
-- **Base de datos:** PostgreSQL  
-- **Frontend:** React + Vite  
-- **Autenticación:** JWT + bcryptjs  
-- **Despliegue:** Render (backend + frontend)  
-- **ORM:** consultas SQL puras mediante `pg.Pool`  
+|Rol|Funcionalidades|Descripción|
+|---|---|---|
+|**Administrador**|Gestión de usuarios (crear, activar/inactivar, eliminar)|Administra todos los roles y puede ver todas las declaraciones.|
+|**Transportista**|Registro y envío de DUCA|Registra DUCA con importador, transporte, mercancías y moneda. Al enviarla, se guarda automáticamente y puede consultarla después.|
+|**Agente Aduanero**|🧾 Validación y control|Consulta declaraciones pendientes, revisa datos completos (detecta campos faltantes) y puede **Aprobar** o **Rechazar** (con motivo obligatorio).|
+|**Importador**|Catálogo disponible|Puede ser seleccionado desde el registro de DUCA; no tiene panel propio en esta versión.|
 
 ---
 
-## ⚙️ Instalación local
+## Arquitectura general
 
-### 🔸 1. Clonar el repositorio
+- **Backend:** Node.js + Express
+    
+- **Base de datos:** PostgreSQL (con JSONB y triggers de bitácora)
+    
+- **Frontend:** React + Vite + Fetch API
+    
+- **Autenticación:** JWT + bcryptjs
+    
+- **Despliegue:** Render (backend + PostgreSQL)
+    
+- **Arquitectura:** Clean Architecture + MVC
+    
+
+---
+
+## Instalación local
+
+### 1. Clonar el repositorio
+
 ```bash
-git clone https://github.com/TU_USUARIO/siglad-proyecto.git
-cd siglad-proyecto
+git clone https://github.com/Calatias7/ProyectoWeb.git
+cd ProyectoWeb
 ```
 
-### 🔸 2. Configurar el backend
+### 2. Configurar backend
+
 ```bash
 cd backend
 cp .env.example .env
 ```
 
-Editar `.env` con tus credenciales PostgreSQL:
+Edita `.env` con tus datos:
 
 ```
-DATABASE_URL=postgres://USER:PASSWORD@HOST:5432/DBNAME
+DATABASE_URL=postgres://usuario:clave@host:5432/base
+DB_SSL=true
 JWT_SECRET=clave-super-secreta
 PORT=3000
+
+ADMIN_EMAIL=admin@siglad.com
+ADMIN_NAME=Admin Principal
+ADMIN_PASS=Admin123
 ```
 
-Instalar dependencias:
+Instala dependencias:
+
 ```bash
 npm install
 ```
 
-Ejecutar el script de administrador:
+Crea el usuario administrador:
+
 ```bash
 npm run seed:admin
 ```
 
-Ejecutar el servidor:
+Ejecuta el servidor:
+
 ```bash
 npm run dev
 ```
 
 ---
 
-### 🔸 3. Configurar el frontend
+### 3. Configurar frontend
 
-Abrir nueva terminal:
 ```bash
 cd ../frontend
 npm install
@@ -108,76 +123,198 @@ npm run dev
 ```
 
 Abrir en el navegador:  
-👉 [http://localhost:5173](http://localhost:5173)
+[http://localhost:5173](http://localhost:5173/)
 
 ---
 
-## 🧩 Roles predefinidos
+## Roles y credenciales
 
-| Rol | Usuario | Contraseña |
-|------|-----------|-------------|
-| **Administrador** | `admin@siglad.test` | `Admin123` |
-
-*(Puedes crear otros usuarios desde el panel de administrador.)*
+|Rol|Usuario|Contraseña|Descripción|
+|---|---|---|---|
+|**Administrador**|`admin@siglad.com`|`Admin123`|Acceso completo|
+|**Transportista**|Crear desde admin|—|Registra DUCA|
+|**Agente Aduanero**|Crear desde admin|—|Valida o rechaza DUCA|
+|**Importador**|Crear desde admin|—|Solo catálogo (selector)|
 
 ---
 
-## 🗃️ Base de datos
+## Estructura de base de datos (resumen)
 
-Ubicación: `database/schema.sql`  
-Contiene las tablas:
-- `users`
-- `declaraciones`
-- `bitacora_usuarios`
-- `bitacora_duca`
-- `aduanas`
-- `paises`
+Tablas principales incluidas en `database/script.sql`:
 
-Ejecutar en PostgreSQL:
+| Tabla               | Descripción                            |
+| ------------------- | -------------------------------------- |
+| `users`             | Usuarios del sistema con roles         |
+| `declaraciones`     | DUCA completas (JSONB + timestamps)    |
+| `bitacora_usuarios` | Registro de accesos (login)            |
+| `bitacora_duca`     | Historial de acciones en declaraciones |
+| `aduanas`           | Catálogo de aduanas                    |
+| `paises`            | Catálogo de países (Centroamérica)     |
 
-```bash
-psql "postgres://USER:PASSWORD@HOST:5432/DBNAME?sslmode=require" -f database/schema.sql
+Incluye:
+
+- Índices por `estado`, `user_id` y `numero_documento`
+    
+- Trigger `trg_bitacora_duca` → inserta log automático al cambiar estado
+    
+- Script inicial con aduanas y países base
+    
+
+---
+
+## Validaciones y lógica DUCA
+
+### Registro de DUCA (Transportista)
+
+- Importador se selecciona desde `/api/users/importadores`
+    
+- Aduanas desde `/api/catalogos/aduanas`
+    
+- Países desde catálogo base (solo Centroamérica)
+    
+- Moneda con conversión automática a GTQ, USD, EUR o HNL
+    
+- Valores calculados en tiempo real (valor unitario × cantidad)
+    
+
+### Consulta de Estados
+
+- Filtrado por `Todos`, `Pendiente`, `Validada`, `Rechazada`
+    
+- Muestra:
+    
+    - Número de documento
+        
+    - Estado
+        
+    - Fecha de creación
+        
+    - Fecha de revisión
+        
+- En el detalle:
+    
+    - Toda la información enviada (importador, transporte, mercancías, valores)
+        
+    - **Motivo de rechazo** si aplica
+        
+    - Aviso de **datos faltantes** (validación automática)
+        
+
+### Validación (Agente Aduanero)
+
+- Lista de pendientes `/api/duca/pendientes`
+    
+- Vista detallada con:
+    
+    - Fechas (`creada`, `revisada`)
+        
+    - Campos faltantes destacados
+        
+- Botones:
+    
+    - **Aprobar** → cambia estado a `VALIDADA`
+        
+    -  **Rechazar** → requiere texto de motivo (`motivo_rechazo`)
+        
+
+---
+
+## 🔗 Endpoints API principales
+
+|Método|Endpoint|Rol|Descripción|
+|---|---|---|---|
+|`POST`|`/api/auth/login`|Todos|Inicia sesión (JWT)|
+|`GET`|`/api/users`|Admin|Lista usuarios|
+|`POST`|`/api/users`|Admin|Crea usuario|
+|`PUT`|`/api/users/:id/activo`|Admin|Activar/desactivar|
+|`DELETE`|`/api/users/:id`|Admin|Eliminar usuario|
+|`GET`|`/api/users/importadores`|Admin, Agente, Transportista|Lista de importadores activos|
+|`GET`|`/api/catalogos/aduanas`|Todos con token|Lista de aduanas|
+|`POST`|`/api/duca/enviar`|Transportista|Envía DUCA|
+|`GET`|`/api/duca/consulta`|Todos|Lista de declaraciones|
+|`GET`|`/api/duca/detalle/:numero`|Todos|Detalle completo|
+|`POST`|`/api/duca/aprobar/:numero`|Agente|Aprueba DUCA|
+|`POST`|`/api/duca/rechazar/:numero`|Agente|Rechaza DUCA con motivo|
+
+---
+
+## Variables de entorno clave (backend)
+
+```env
+DATABASE_URL=postgres://usuario:clave@host:5432/basedatos
+DB_SSL=true
+JWT_SECRET=supersecreto
+PORT=3000
+
+ADMIN_EMAIL=admin@siglad.com
+ADMIN_NAME=Admin Principal
+ADMIN_PASS=Admin123
 ```
 
 ---
 
-## 🚀 Despliegue en Render
+## Despliegue en Render
 
-1. Conectar este repositorio a **Render**  
-2. Crear un nuevo servicio web (Node.js)  
-3. En variables de entorno, añadir:
-   - `DATABASE_URL`
-   - `JWT_SECRET`
-4. Comando de inicio:
-   ```
-   npm run dev
-   ```
-5. Para el frontend, crear un **Static Site** con:
-   ```
-   npm run build
-   ```
-   Directorio de publicación: `/dist`
+1. Crear **Render Web Service** apuntando a `/backend/`
+    
+    - Runtime: Node
+        
+    - Build: `npm install`
+        
+    - Start: `npm start`
+        
+    - Variables:
+        
+        - `DATABASE_URL`
+            
+        - `JWT_SECRET`
+            
+        - `DB_SSL=true`
+            
+2. Crear **PostgreSQL instance** y ejecutar `database/script.sql`.
+    
+3. Ejecutar seed:
+    
+    ```bash
+    npm run seed:admin
+    ```
+    
+4. Frontend:
+    
+    - Subir a Render (Static Site) o Vercel
+        
+    - Build: `npm run build`
+        
+    - Output dir: `/dist`
+        
 
 ---
 
-## 📈 Estado del proyecto
+## Estado actual
 
-- ✅ Backend funcional con JWT y roles
-- ✅ Frontend React modular
-- ✅ Validación y bitácoras
-- ✅ Soporte Render + PostgreSQL
-- 🚧 Próximas mejoras: dashboard, reportes PDF y logs auditables
+- ✅ Backend con JWT y bitácoras activas
+    
+- ✅ Validaciones completas en transportista y agente
+    
+- ✅ Motivo de rechazo y fechas formateadas
+    
+- ✅ Catálogos dinámicos (aduanas, países, importadores)
+    
+- ✅ Conversión de moneda automática
+    
+- ✅ Logs automáticos (trigger PostgreSQL)
+    
+- 🚧 Próximas mejoras: reportes PDF/XLSX, panel administrativo con gráficos y auditoría avanzada
+    
 
 ---
 
-## 🤝 Créditos
+## Autor
 
-Desarrollado por **Víctor**  
-Proyecto académico y técnico guiado con **Clean Architecture + MVC**,  
-con soporte a múltiples roles y despliegue en nube (Render).
+Desarrollado por **Víctor**  Mendez
+Proyecto académico / técnico con fines de aprendizaje y despliegue real.  
+Basado en principios de **Clean Architecture** y **MVC asíncrono** con PostgreSQL + Node + React.
 
----
-
-## 🪶 Licencia
+##  Licencia
 
 MIT © 2025 — Puedes usar, modificar y mejorar este sistema libremente.
