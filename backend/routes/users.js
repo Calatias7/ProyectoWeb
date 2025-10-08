@@ -34,7 +34,6 @@ router.get(
       sql += ` ORDER BY id DESC`;
 
       const { rows } = await pool.query(sql, params);
-
       await logBitacora(req, { operacion: 'USUARIO_LISTA', resultado: 'OK' });
       res.json(rows);
     } catch (e) {
@@ -82,7 +81,9 @@ router.post(
 );
 
 /**
- * PUT /api/users/:id   ← EDITAR (nombre, email, role)
+ * PUT /api/users/:id
+ * Edita nombre, email, role, activo y (OPCIONAL) cambia la contraseña.
+ * body: { nombre, email, role, activo, password? }
  */
 router.put(
   '/:id',
@@ -91,21 +92,30 @@ router.put(
   async (req, res) => {
     try {
       const { id } = req.params;
-      const { nombre = '', email = '', role } = req.body;
+      const { nombre = '', email = '', role, activo = true, password = '' } = req.body;
 
       if (!email || !role) return res.status(400).json({ error: 'Email y rol son obligatorios.' });
 
-      const { rows } = await pool.query(
-        `UPDATE users
-            SET nombre = $1,
-                email  = $2,
-                role   = $3
-          WHERE id = $4
-          RETURNING id, nombre, email, role, activo, to_char(created_at,'DD/MM/YYYY') AS creado`,
-        [nombre, email.toLowerCase(), role, id]
-      );
+      // Construcción dinámica por si NO se quiere cambiar contraseña
+      let sql = `
+        UPDATE users
+           SET nombre = $1,
+               email  = $2,
+               role   = $3,
+               activo = $4
+      `;
+      const params = [nombre, email.toLowerCase(), role, !!activo];
 
-      if (!rows.length) {
+      if (password && password.trim()) {
+        const hash = await bcrypt.hash(password.trim(), 10);
+        sql += `, password_hash = $5`;
+        params.push(hash);
+      }
+      sql += ` WHERE id = $${params.length + 1} RETURNING id, nombre, email, role, activo, to_char(created_at,'DD/MM/YYYY') AS creado`;
+      params.push(id);
+
+      const { rowCount, rows } = await pool.query(sql, params);
+      if (!rowCount) {
         await logBitacora(req, { operacion: 'USUARIO_EDITAR', resultado: 'ERROR' });
         return res.status(404).json({ error: 'Usuario no encontrado' });
       }
